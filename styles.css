@@ -1,9 +1,12 @@
 body {
   margin: 0;
   overflow: hidden;
-  background: black;
+  background: linear-gradient(135deg, #1a1a2e, #16213e);
   color: white;
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
 #loading {
@@ -12,22 +15,26 @@ body {
   left: 0;
   width: 100%;
   height: 100%;
-  background: #111;
+  background: rgba(10, 10, 20, 0.95);
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
   z-index: 1000;
+  backdrop-filter: blur(10px);
 }
 
 #loadStatus {
   margin-top: 20px;
   color: #0af;
+  font-size: 18px;
+  text-align: center;
+  max-width: 80%;
 }
 
 .spinner {
-  width: 50px;
-  height: 50px;
+  width: 60px;
+  height: 60px;
   border: 5px solid rgba(0, 170, 255, 0.3);
   border-radius: 50%;
   border-top-color: #0af;
@@ -44,27 +51,29 @@ body {
   left: 50%;
   transform: translate(-50%, -50%);
   padding: 20px 40px;
-  font-size: 20px;
+  font-size: 22px;
   font-weight: bold;
-  background: linear-gradient(135deg, #0a0, #0f0);
+  background: linear-gradient(135deg, #0a6, #0fc);
   color: white;
   border: none;
   border-radius: 15px;
   cursor: pointer;
   z-index: 1001;
-  box-shadow: 0 0 20px rgba(0, 255, 0, 0.5);
+  box-shadow: 0 0 30px rgba(0, 255, 200, 0.6);
   transition: all 0.3s;
+  letter-spacing: 1px;
 }
 
 .start-button:hover {
   transform: translate(-50%, -50%) scale(1.05);
-  box-shadow: 0 0 30px rgba(0, 255, 0, 0.8);
+  box-shadow: 0 0 40px rgba(0, 255, 200, 0.9);
 }
 
 #app {
   width: 100%;
   height: 100vh;
   position: relative;
+  display: none;
 }
 
 video, canvas {
@@ -80,35 +89,194 @@ canvas {
   z-index: 2;
 }
 
+/* Panel de controles */
+#controls {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  right: 20px;
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  background: rgba(0, 0, 0, 0.7);
+  padding: 15px;
+  border-radius: 15px;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(0, 200, 255, 0.3);
+}
+
+.control-group {
+  flex: 1;
+  min-width: 150px;
+}
+
+.control-title {
+  font-size: 14px;
+  color: #8cf;
+  margin-bottom: 5px;
+}
+
+select, button {
+  width: 100%;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 20, 40, 0.8);
+  color: white;
+  font-size: 14px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+select:hover, button:hover {
+  background: rgba(0, 40, 80, 0.9);
+  border-color: rgba(0, 200, 255, 0.5);
+}
+
+button.active {
+  background: linear-gradient(135deg, #0a6, #0fc);
+  border-color: rgba(0, 255, 200, 0.5);
+}
+
+/* Panel de información */
 #info {
   position: absolute;
   bottom: 20px;
   left: 20px;
   right: 20px;
   background: rgba(0, 0, 0, 0.8);
-  padding: 15px;
-  border-radius: 12px;
+  padding: 20px;
+  border-radius: 15px;
   z-index: 3;
   backdrop-filter: blur(10px);
   border: 1px solid rgba(0, 255, 0, 0.3);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 15px;
 }
 
-.info-row {
-  margin: 8px 0;
-  font-size: 16px;
-  display: flex;
-  justify-content: space-between;
+.info-card {
+  background: rgba(0, 20, 40, 0.6);
+  padding: 15px;
+  border-radius: 10px;
+  border-left: 4px solid #0af;
 }
 
-.info-row span {
-  color: #0f0;
+.info-title {
+  font-size: 14px;
+  color: #8cf;
+  margin-bottom: 8px;
+}
+
+.info-value {
+  font-size: 24px;
   font-weight: bold;
-  font-size: 18px;
+  color: white;
+  text-shadow: 0 0 10px rgba(0, 200, 255, 0.5);
 }
 
-#markerStatus {
+.info-status {
   color: #ff0;
-  text-align: center;
   font-size: 14px;
   margin-top: 10px;
+  text-align: center;
+  grid-column: 1 / -1;
+}
+
+.good { color: #0f0 !important; }
+.warning { color: #ff0 !important; }
+.error { color: #f00 !important; }
+
+/* Indicador de ángulo */
+#angleIndicator {
+  position: absolute;
+  top: 50%;
+  right: 20px;
+  transform: translateY(-50%);
+  width: 120px;
+  height: 120px;
+  z-index: 10;
+  background: rgba(0, 0, 0, 0.7);
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.2);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  backdrop-filter: blur(10px);
+}
+
+.angle-value {
+  font-size: 28px;
+  font-weight: bold;
+  color: white;
+  text-shadow: 0 0 10px rgba(0, 200, 255, 0.7);
+}
+
+/* Botones de acción */
+#actionButtons {
+  position: absolute;
+  bottom: 120px;
+  left: 20px;
+  right: 20px;
+  display: flex;
+  gap: 10px;
+  z-index: 10;
+}
+
+.action-btn {
+  flex: 1;
+  padding: 15px;
+  border-radius: 12px;
+  border: none;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.3s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.action-btn.primary {
+  background: linear-gradient(135deg, #0a6, #0fc);
+}
+
+.action-btn.secondary {
+  background: linear-gradient(135deg, #444, #666);
+}
+
+.action-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+}
+
+/* Media queries para móviles */
+@media (max-width: 768px) {
+  #controls {
+    flex-direction: column;
+    gap: 5px;
+  }
+  
+  #info {
+    grid-template-columns: 1fr 1fr;
+    bottom: 100px;
+  }
+  
+  #actionButtons {
+    flex-direction: column;
+    bottom: 20px;
+  }
+  
+  #angleIndicator {
+    width: 80px;
+    height: 80px;
+    top: 30%;
+  }
+  
+  .angle-value {
+    font-size: 20px;
+  }
 }
