@@ -7,15 +7,30 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <video id="camera" autoplay playsinline></video>
-  <canvas id="overlay"></canvas>
-  <div id="info">
-    <div>Distancia: <span id="dist">--</span> cm</div>
-    <div>Ángulo: <span id="angle">--</span>°</div>
-    <div>Velocidad: <span id="speed">--</span> cm/s</div>
+  <div id="loading">
+    <div class="spinner"></div>
+    <p>Cargando OpenCV.js...</p>
+    <p id="loadStatus"></p>
+  </div>
+  
+  <button id="startBtn" class="start-button">
+    🚀 INICIAR SIMULADOR
+  </button>
+  
+  <div id="app" style="display:none;">
+    <video id="camera" autoplay playsinline></video>
+    <canvas id="overlay"></canvas>
+    <div id="info">
+      <div class="info-row">🎯 Coloca el marcador en vista</div>
+      <div class="info-row">Distancia: <span id="dist">--</span> cm</div>
+      <div class="info-row">Ángulo: <span id="angle">--</span>°</div>
+      <div class="info-row">Velocidad: <span id="speed">--</span> cm/s</div>
+      <div class="info-row" id="markerStatus">🟡 Buscando marcador...</div>
+    </div>
   </div>
 
-  <script async src="https://docs.opencv.org/4.5.4/opencv.js" onload="onOpenCvReady();"></script>
+  <!-- Usar OpenCV versión 3.4 que es más estable -->
+  <script async src="https://docs.opencv.org/3.4.0/opencv.js" onload="onOpenCvReady()"></script>
   <script src="app.js"></script>
 </body>
 </html>
