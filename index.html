@@ -9,8 +9,7 @@
 <body>
   <div id="loading">
     <div class="spinner"></div>
-    <p>Cargando OpenCV.js...</p>
-    <p id="loadStatus"></p>
+    <p id="loadStatus">Cargando aplicación...</p>
   </div>
   
   <button id="startBtn" class="start-button">
@@ -21,18 +20,16 @@
     <video id="camera" autoplay playsinline></video>
     <canvas id="overlay"></canvas>
     <div id="info">
-      <div class="info-row">🎯 Coloca el marcador en vista</div>
+      <div class="info-row">🎯 Apunta al marcador (cuadrado negro)</div>
       <div class="info-row">Distancia: <span id="dist">--</span> cm</div>
       <div class="info-row">Ángulo: <span id="angle">--</span>°</div>
       <div class="info-row">Velocidad: <span id="speed">--</span> cm/s</div>
-      <div class="info-row" id="markerStatus">🟡 Buscando marcador...</div>
-      <div class="info-row" id="angleStatus"></div>
+      <div class="info-row" id="status">🟡 Esperando marcador...</div>
       <div class="info-row hint">Rango óptimo: 15° - 30°</div>
     </div>
   </div>
 
-  <!-- Usar OpenCV versión 3.4 que es más estable -->
-  <script async src="https://docs.opencv.org/3.4.0/opencv.js" onload="onOpenCvReady()"></script>
+  <!-- NO usar OpenCV por ahora - versión simple -->
   <script src="app.js"></script>
 </body>
 </html>
