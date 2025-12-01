@@ -3,11 +3,72 @@ body {
   overflow: hidden;
   background: black;
   color: white;
-  font-family: sans-serif;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+#loading {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: #111;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+#loadStatus {
+  margin-top: 20px;
+  color: #0af;
+}
+
+.spinner {
+  width: 50px;
+  height: 50px;
+  border: 5px solid rgba(0, 170, 255, 0.3);
+  border-radius: 50%;
+  border-top-color: #0af;
+  animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.start-button {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 20px 40px;
+  font-size: 20px;
+  font-weight: bold;
+  background: linear-gradient(135deg, #0a0, #0f0);
+  color: white;
+  border: none;
+  border-radius: 15px;
+  cursor: pointer;
+  z-index: 1001;
+  box-shadow: 0 0 20px rgba(0, 255, 0, 0.5);
+  transition: all 0.3s;
+}
+
+.start-button:hover {
+  transform: translate(-50%, -50%) scale(1.05);
+  box-shadow: 0 0 30px rgba(0, 255, 0, 0.8);
+}
+
+#app {
+  width: 100%;
+  height: 100vh;
+  position: relative;
 }
 
 video, canvas {
-  position: fixed;
+  position: absolute;
   top: 0;
   left: 0;
   width: 100%;
@@ -15,12 +76,39 @@ video, canvas {
   object-fit: cover;
 }
 
+canvas {
+  z-index: 2;
+}
+
 #info {
-  position: fixed;
-  bottom: 10px;
-  left: 10px;
-  background: rgba(0,0,0,0.7);
-  padding: 10px;
-  border-radius: 8px;
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  right: 20px;
+  background: rgba(0, 0, 0, 0.8);
+  padding: 15px;
+  border-radius: 12px;
+  z-index: 3;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(0, 255, 0, 0.3);
+}
+
+.info-row {
+  margin: 8px 0;
+  font-size: 16px;
+  display: flex;
+  justify-content: space-between;
+}
+
+.info-row span {
+  color: #0f0;
+  font-weight: bold;
+  font-size: 18px;
+}
+
+#markerStatus {
+  color: #ff0;
+  text-align: center;
   font-size: 14px;
+  margin-top: 10px;
 }
