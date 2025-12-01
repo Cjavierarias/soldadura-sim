@@ -23,6 +23,7 @@ body {
 #loadStatus {
   margin-top: 20px;
   color: #0af;
+  text-align: center;
 }
 
 .spinner {
@@ -85,12 +86,13 @@ canvas {
   bottom: 20px;
   left: 20px;
   right: 20px;
-  background: rgba(0, 0, 0, 0.8);
+  background: rgba(0, 0, 0, 0.85);
   padding: 15px;
   border-radius: 12px;
   z-index: 3;
   backdrop-filter: blur(10px);
   border: 1px solid rgba(0, 255, 0, 0.3);
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
 }
 
 .info-row {
@@ -98,17 +100,74 @@ canvas {
   font-size: 16px;
   display: flex;
   justify-content: space-between;
+  align-items: center;
 }
 
 .info-row span {
-  color: #0f0;
   font-weight: bold;
   font-size: 18px;
+  min-width: 60px;
+  text-align: right;
+}
+
+#dist, #speed {
+  color: #0af;
+}
+
+#angle {
+  color: #ff0;
+  transition: color 0.3s;
 }
 
 #markerStatus {
   color: #ff0;
   text-align: center;
   font-size: 14px;
+  margin-top: 5px;
+  justify-content: center;
+}
+
+#angleStatus {
+  color: #0f0;
+  text-align: center;
+  font-weight: bold;
+  font-size: 16px;
+  margin-top: 5px;
+  justify-content: center;
+  transition: color 0.3s;
+}
+
+.hint {
+  color: #aaa;
+  font-size: 12px;
+  text-align: center;
+  justify-content: center;
   margin-top: 10px;
+  border-top: 1px solid #333;
+  padding-top: 10px;
+}
+
+/* Indicador visual del ángulo */
+.angle-indicator {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  width: 100px;
+  height: 100px;
+  background: rgba(0, 0, 0, 0.7);
+  border-radius: 50%;
+  z-index: 3;
+  display: none;
+}
+
+.angle-needle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 2px;
+  height: 40px;
+  background: #f00;
+  transform-origin: bottom center;
+  transform: translateX(-50%) rotate(0deg);
+  transition: transform 0.1s;
 }
