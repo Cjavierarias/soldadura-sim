@@ -42,8 +42,8 @@
       </div>
       
       <div class="control-group">
-        <div class="control-title">Modo de Entrenamiento</div>
-        <button id="modeBtn" class="active">Modo Guiado</button>
+        <div class="control-title">Sonidos</div>
+        <button id="soundToggle" class="active">🔊 Sonidos ON</button>
       </div>
     </div>
     
@@ -60,7 +60,7 @@
       </div>
       <div class="info-card">
         <div class="control-title">Ángulo</div>
-        <div class="info-value" id="angle">--°</div>
+        <div class="info-value" id="angleValue">--°</div>
       </div>
       <div class="info-card">
         <div class="control-title">Velocidad</div>
@@ -85,16 +85,19 @@
       </button>
     </div>
     
-    <!-- Elementos de audio para feedback -->
+    <!-- Elementos de audio para feedback - VERSIONES MEJORADAS -->
     <audio id="goodSound" preload="auto">
-      <source src="https://assets.mixkit.co/sfx/preview/mixkit-correct-answer-tone-2870.mp3" type="audio/mpeg">
+      <source src="https://assets.mixkit.co/active_storage/sfx/287/287-preview.mp3" type="audio/mpeg">
     </audio>
-    <audio id="warningSound" preload="auto">
-      <source src="https://assets.mixkit.co/sfx/preview/mixkit-warning-alarm-buzzer-1551.mp3" type="audio/mpeg">
+    <audio id="lowAngleSound" preload="auto">
+      <source src="https://assets.mixkit.co/active_storage/sfx/1551/1551-preview.mp3" type="audio/mpeg">
     </audio>
-    <audio id="errorSound" preload="auto">
-      <source src="https://assets.mixkit.co/sfx/preview/mixkit-retro-game-emergency-alarm-1000.mp3" type="audio/mpeg">
+    <audio id="highAngleSound" preload="auto">
+      <source src="https://assets.mixkit.co/active_storage/sfx/1000/1000-preview.mp3" type="audio/mpeg">
     </audio>
+    <!-- Sonidos alternativos locales usando oscillator API -->
+    <audio id="beepHigh" preload="none"></audio>
+    <audio id="beepLow" preload="none"></audio>
   </div>
 
   <!-- OpenCV.js -->
