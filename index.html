@@ -2,34 +2,20 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Soldadura Sim AR</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div id="loading">
-    <div class="spinner"></div>
-    <p id="loadStatus">Cargando aplicación...</p>
-  </div>
-  
-  <button id="startBtn" class="start-button">
-    🚀 INICIAR SIMULADOR
-  </button>
-  
-  <div id="app" style="display:none;">
-    <!-- SOLO UN ELEMENTO VISUAL - el video está oculto -->
-    <canvas id="cameraView"></canvas>
-    
-    <div id="info">
-      <div class="info-row">🎯 Apunta al marcador (cuadrado negro)</div>
-      <div class="info-row">Distancia: <span id="dist">--</span> cm</div>
-      <div class="info-row">Ángulo: <span id="angle">--</span>°</div>
-      <div class="info-row">Velocidad: <span id="speed">--</span> cm/s</div>
-      <div class="info-row" id="status">🟡 Esperando marcador...</div>
-      <div class="info-row hint">Rango óptimo: 15° - 30°</div>
-    </div>
+  <video id="camera" autoplay playsinline></video>
+  <canvas id="overlay"></canvas>
+  <div id="info">
+    <div>Distancia: <span id="dist">--</span> cm</div>
+    <div>Ángulo: <span id="angle">--</span>°</div>
+    <div>Velocidad: <span id="speed">--</span> cm/s</div>
   </div>
 
+  <script async src="https://docs.opencv.org/3.4.0/opencv.js" onload="onOpenCvReady();"></script>
   <script src="app.js"></script>
 </body>
 </html>
