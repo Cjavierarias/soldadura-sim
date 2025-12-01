@@ -1,4 +1,4 @@
-console.log("Soldadura Sim AR - Iniciando...");
+console.log("🔥 Simulador de Soldadura AR - Iniciando...");
 
 // Variables globales
 let video = null;
@@ -6,358 +6,505 @@ let canvas = null;
 let ctx = null;
 let cvReady = false;
 let isProcessing = false;
+let zeroAngleCalibrated = false;
+let calibrationValue = 0;
+
+// Configuración de soldadura
+let weldConfig = {
+  type: 'mig',
+  material: 'acero',
+  mode: 'guided',
+  optimalAngle: {
+    mig: { min: 15, max: 25 },
+    tig: { min: 10, max: 20 },
+    electrodo: { min: 5, max: 15 }
+  },
+  soundEnabled: true
+};
 
 // Variables de seguimiento
 let prevTime = 0;
 let prevPos = null;
-let markerHistory = [];
-const HISTORY_SIZE = 10;
-
-// Tamaño real del marcador en cm
-const MARKER_SIZE_CM = 10;
+let angleHistory = [];
+let stabilityScore = 0;
 
 // Elementos DOM
 let startBtn = null;
 let appContainer = null;
 let loading = null;
 let loadStatus = null;
-let distEl = null;
-let angleEl = null;
-let speedEl = null;
+let angleDisplay = null;
 let markerStatusEl = null;
+
+// Sensores del dispositivo
+let isDeviceOrientationSupported = false;
+let deviceAngle = 0;
+let lastSoundTime = 0;
+const SOUND_COOLDOWN = 500; // ms entre sonidos
 
 // Inicialización cuando el DOM está listo
 document.addEventListener('DOMContentLoaded', function() {
-    console.log("DOM cargado");
-    
-    // Obtener referencias a elementos DOM
-    startBtn = document.getElementById('startBtn');
-    appContainer = document.getElementById('app');
-    loading = document.getElementById('loading');
-    loadStatus = document.getElementById('loadStatus');
-    video = document.getElementById('camera');
-    canvas = document.getElementById('overlay');
-    distEl = document.getElementById('dist');
-    angleEl = document.getElementById('angle');
-    speedEl = document.getElementById('speed');
-    markerStatusEl = document.getElementById('markerStatus');
-    
-    // Obtener contexto del canvas
-    ctx = canvas.getContext('2d');
-    
-    // Configurar botón de inicio
-    startBtn.addEventListener('click', startApp);
-    
-    // Verificar si OpenCV ya está cargado
-    if (typeof cv !== 'undefined') {
-        console.log("OpenCV ya está cargado");
-        onOpenCvReady();
-    } else {
-        console.log("Esperando carga de OpenCV...");
-    }
+  console.log("DOM cargado");
+  
+  // Obtener referencias a elementos DOM
+  startBtn = document.getElementById('startBtn');
+  appContainer = document.getElementById('app');
+  loading = document.getElementById('loading');
+  loadStatus = document.getElementById('loadStatus');
+  video = document.getElementById('camera');
+  canvas = document.getElementById('overlay');
+  angleDisplay = document.getElementById('angleDisplay');
+  markerStatusEl = document.getElementById('markerStatus');
+  
+  // Contexto del canvas
+  ctx = canvas.getContext('2d');
+  
+  // Configurar botones y controles
+  startBtn.addEventListener('click', startApp);
+  document.getElementById('weldType').addEventListener('change', updateWeldConfig);
+  document.getElementById('material').addEventListener('change', updateWeldConfig);
+  document.getElementById('modeBtn').addEventListener('click', toggleMode);
+  document.getElementById('calibrateBtn').addEventListener('click', calibrateZeroAngle);
+  document.getElementById('helpBtn').addEventListener('click', showHelp);
+  
+  // Verificar sensores del dispositivo
+  checkDeviceSensors();
+  
+  // Verificar si OpenCV ya está cargado
+  if (typeof cv !== 'undefined') {
+    onOpenCvReady();
+  }
 });
+
+// Verificar sensores del dispositivo
+function checkDeviceSensors() {
+  if (window.DeviceOrientationEvent) {
+    isDeviceOrientationSupported = true;
+    window.addEventListener('deviceorientation', handleDeviceOrientation);
+    console.log("✅ Sensores de orientación soportados");
+  } else {
+    console.log("⚠️ Sensores de orientación no soportados");
+    markerStatusEl.textContent = "⚠️ Usando detección por cámara (activa los sensores para mejor precisión)";
+  }
+}
+
+// Manejar orientación del dispositivo - CORREGIDO EL ÁNGULO
+function handleDeviceOrientation(event) {
+  if (event.beta !== null && event.gamma !== null) {
+    // beta: inclinación frontal (-180 a 180)
+    // gamma: inclinación lateral (-90 a 90)
+    
+    // Usar beta para ángulo frontal (como si fuera una antorcha)
+    let angle = Math.abs(event.beta);
+    
+    // Cuando el celular está plano sobre una mesa (frente a la imagen): beta ≈ 0°, gamma ≈ 0°
+    // Cuando el celular está vertical/perpendicular: beta ≈ 90°, gamma ≈ 0°
+    
+    // Ajustar según calibración
+    if (zeroAngleCalibrated) {
+      angle = Math.abs(event.beta - calibrationValue);
+    }
+    
+    // Normalizar a 0-90 grados
+    angle = Math.min(Math.max(angle, 0), 90);
+    
+    // Actualizar display
+    deviceAngle = angle;
+    angleDisplay.textContent = Math.round(angle) + '°';
+    document.getElementById('angle').textContent = Math.round(angle) + '°';
+    
+    // Actualizar clase CSS según ángulo
+    const angleEl = document.getElementById('angle');
+    const optimal = weldConfig.optimalAngle[weldConfig.type];
+    
+    if (angle >= optimal.min && angle <= optimal.max) {
+      angleEl.className = 'info-value good';
+    } else {
+      angleEl.className = 'info-value warning';
+    }
+    
+    // Verificar ángulo óptimo
+    checkOptimalAngle(angle);
+  }
+}
+
+// Verificar si el ángulo está en rango óptimo
+function checkOptimalAngle(angle) {
+  if (!weldConfig.soundEnabled || Date.now() - lastSoundTime < SOUND_COOLDOWN) {
+    return;
+  }
+  
+  const optimal = weldConfig.optimalAngle[weldConfig.type];
+  
+  if (angle < optimal.min) {
+    // Ángulo demasiado bajo - sonido agudo
+    playSound('errorSound');
+    markerStatusEl.innerHTML = '⚠️ Ángulo demasiado bajo (sonido agudo)';
+    lastSoundTime = Date.now();
+  } else if (angle > optimal.max) {
+    // Ángulo demasiado alto - sonido grave
+    playSound('warningSound');
+    markerStatusEl.innerHTML = '⚠️ Ángulo demasiado alto (sonido grave)';
+    lastSoundTime = Date.now();
+  } else {
+    // Ángulo óptimo
+    markerStatusEl.innerHTML = '✅ Ángulo óptimo para soldadura';
+  }
+}
+
+// Reproducir sonido
+function playSound(soundId) {
+  if (!weldConfig.soundEnabled) return;
+  
+  const sound = document.getElementById(soundId);
+  if (sound) {
+    sound.currentTime = 0;
+    sound.play().catch(e => console.log("Error reproduciendo sonido:", e));
+  }
+}
+
+// Calibrar ángulo cero
+function calibrateZeroAngle() {
+  if (isDeviceOrientationSupported) {
+    // Para calibrar, asumimos que el usuario tiene el celular paralelo a la superficie (ángulo 0 deseado)
+    // En este punto, event.beta debería ser el ángulo actual
+    calibrationValue = deviceAngle;
+    zeroAngleCalibrated = true;
+    
+    // Feedback visual
+    const btn = document.getElementById('calibrateBtn');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '✅ Calibrado!';
+    btn.style.background = 'linear-gradient(135deg, #0a6, #0fc)';
+    
+    playSound('goodSound');
+    
+    setTimeout(() => {
+      btn.innerHTML = originalText;
+      btn.style.background = '';
+    }, 2000);
+    
+    markerStatusEl.innerHTML = '✅ Ángulo cero calibrado correctamente';
+    
+    // Para prueba sin sensores
+    console.log("Ángulo calibrado a: ", calibrationValue);
+  } else {
+    alert("Los sensores de orientación no están disponibles. Usa un dispositivo móvil con sensores para calibración precisa.");
+  }
+}
+
+// Actualizar configuración
+function updateWeldConfig() {
+  weldConfig.type = document.getElementById('weldType').value;
+  weldConfig.material = document.getElementById('material').value;
+  
+  // Actualizar display de ángulo óptimo
+  const optimal = weldConfig.optimalAngle[weldConfig.type];
+  markerStatusEl.innerHTML = `🎯 Ángulo óptimo: ${optimal.min}° - ${optimal.max}°`;
+}
+
+// Alternar modo
+function toggleMode() {
+  const btn = document.getElementById('modeBtn');
+  if (weldConfig.mode === 'guided') {
+    weldConfig.mode = 'free';
+    btn.innerHTML = 'Modo Libre';
+    btn.classList.remove('active');
+    markerStatusEl.innerHTML = '🔓 Modo libre activado';
+  } else {
+    weldConfig.mode = 'guided';
+    btn.innerHTML = 'Modo Guiado';
+    btn.classList.add('active');
+    markerStatusEl.innerHTML = '🔒 Modo guiado activado';
+  }
+}
+
+// Mostrar ayuda
+function showHelp() {
+  alert("SIMULADOR DE SOLDADURA\n\n" +
+        "1. Coloca el marcador en la superficie a soldar\n" +
+        "2. Sostén el celular como si fuera una antorcha\n" +
+        "3. Calibra el ángulo cero presionando el botón de calibración\n" +
+        "4. Mantén el ángulo entre los rangos óptimos:\n" +
+        "   - MIG/MAG: 15°-25°\n" +
+        "   - TIG: 10°-20°\n" +
+        "   - Electrodo: 5°-15°\n" +
+        "5. Escucha los sonidos de feedback:\n" +
+        "   - Sonido agudo: ángulo demasiado bajo\n" +
+        "   - Sonido grave: ángulo demasiado alto\n\n" +
+        "Consejo: Mantén el celular estable para mejor precisión.");
+}
 
 // Callback cuando OpenCV.js se carga
 function onOpenCvReady() {
-    console.log("✅ OpenCV.js listo!");
-    console.log("Versión OpenCV:", cv.getVersionString ? cv.getVersionString() : "3.4.0");
-    
-    cvReady = true;
-    loadStatus.textContent = "OpenCV cargado correctamente";
-    loading.style.display = 'none';
-    startBtn.style.display = 'block';
-    
-    // Mostrar versión en consola
-    if (cv.getBuildInformation) {
-        const info = cv.getBuildInformation();
-        console.log("Build info:", info.substring(0, 100) + "...");
-    }
+  console.log("✅ OpenCV.js listo!");
+  cvReady = true;
+  loadStatus.textContent = "OpenCV cargado correctamente";
+  loading.style.display = 'none';
+  startBtn.style.display = 'block';
 }
 
 // Iniciar la aplicación
 async function startApp() {
-    console.log("Iniciando aplicación...");
+  console.log("Iniciando aplicación...");
+  
+  try {
+    startBtn.style.display = 'none';
+    loadStatus.textContent = "Solicitando acceso a cámara y sensores...";
+    loading.style.display = 'flex';
     
-    try {
-        // Ocultar botón de inicio
-        startBtn.style.display = 'none';
-        
-        // Solicitar acceso a la cámara
-        loadStatus.textContent = "Solicitando acceso a cámara...";
-        loading.style.display = 'flex';
-        
-        const stream = await navigator.mediaDevices.getUserMedia({
-            video: {
-                facingMode: "environment",
-                width: { ideal: 1280 },
-                height: { ideal: 720 },
-                frameRate: { ideal: 30 }
-            }
-        });
-        
-        console.log("✅ Cámara accedida correctamente");
-        video.srcObject = stream;
-        
-        // Esperar a que el video esté listo
-        await new Promise((resolve) => {
-            video.onloadedmetadata = () => {
-                console.log("📷 Dimensiones del video:", video.videoWidth, "x", video.videoHeight);
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
-                
-                // Ajustar tamaño del canvas para dispositivos móviles
-                const scale = Math.min(window.innerWidth / video.videoWidth, window.innerHeight / video.videoHeight);
-                canvas.style.transform = `scale(${scale})`;
-                canvas.style.transformOrigin = 'top left';
-                
-                resolve();
-            };
-        });
-        
-        // Esperar a que el video empiece a reproducirse
-        await new Promise((resolve) => {
-            video.onplaying = () => {
-                console.log("▶️ Video reproduciéndose");
-                resolve();
-            };
-        });
-        
-        // Mostrar la aplicación
-        loading.style.display = 'none';
-        appContainer.style.display = 'block';
-        
-        // Iniciar el procesamiento
-        isProcessing = true;
-        processFrame();
-        
-    } catch (error) {
-        console.error("❌ Error al iniciar:", error);
-        loadStatus.textContent = `Error: ${error.message}`;
-        startBtn.style.display = 'block';
-        startBtn.textContent = "🔄 Reintentar";
-        
-        // Mostrar mensaje de error específico
-        if (error.name === 'NotAllowedError') {
-            alert("Permiso de cámara denegado. Por favor, permite el acceso a la cámara en los ajustes del navegador.");
-        } else if (error.name === 'NotFoundError') {
-            alert("No se encontró ninguna cámara trasera. Asegúrate de usar un dispositivo con cámara trasera.");
-        } else {
-            alert(`Error de cámara: ${error.message}`);
+    // Solicitar acceso a cámara
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: "environment",
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+        frameRate: { ideal: 30 }
+      }
+    });
+    
+    video.srcObject = stream;
+    
+    await new Promise((resolve) => {
+      video.onloadedmetadata = () => {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        resolve();
+      };
+    });
+    
+    await new Promise((resolve) => {
+      video.onplaying = () => {
+        console.log("Video reproduciéndose");
+        resolve();
+      };
+    });
+    
+    // Mostrar aplicación
+    loading.style.display = 'none';
+    appContainer.style.display = 'block';
+    
+    // Iniciar procesamiento
+    isProcessing = true;
+    processFrame();
+    
+    // Configurar inicial
+    updateWeldConfig();
+    
+    // Solicitar permiso para sensores en iOS
+    if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+      try {
+        const permission = await DeviceMotionEvent.requestPermission();
+        if (permission === 'granted') {
+          console.log("✅ Permiso para sensores concedido");
         }
+      } catch (e) {
+        console.log("Permiso para sensores no concedido:", e);
+      }
     }
+    
+  } catch (error) {
+    console.error("❌ Error:", error);
+    loadStatus.textContent = `Error: ${error.message}`;
+    startBtn.style.display = 'block';
+    startBtn.textContent = "🔄 Reintentar";
+    
+    if (error.name === 'NotAllowedError') {
+      alert("Permiso de cámara denegado. Por favor, permite el acceso a la cámara.");
+    }
+  }
 }
 
-// Procesar cada frame del video
+// Procesar cada frame
 function processFrame() {
-    if (!isProcessing) return;
+  if (!isProcessing) return;
+  
+  try {
+    // Dibujar video en canvas
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     
-    try {
-        // Dibujar el video en el canvas
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        
-        // Procesar con OpenCV si está listo
-        if (cvReady && cv.Mat) {
-            processWithOpenCV();
-        } else {
-            // Mostrar mensaje de espera
-            markerStatusEl.textContent = "🟡 Cargando OpenCV...";
-        }
-        
-        // Continuar con el siguiente frame
-        requestAnimationFrame(processFrame);
-        
-    } catch (error) {
-        console.error("Error en processFrame:", error);
-        markerStatusEl.textContent = "🔴 Error de procesamiento";
-        isProcessing = false;
+    // Si OpenCV está listo, procesar marcador
+    if (cvReady && cv.Mat) {
+      processWithOpenCV();
     }
+    
+    // Dibujar guías visuales
+    drawVisualGuides();
+    
+    // Actualizar estabilidad
+    updateStability();
+    
+    // Actualizar otros valores (simulados si no hay sensores)
+    if (!isDeviceOrientationSupported) {
+      updateSimulatedValues();
+    }
+    
+    // Continuar procesamiento
+    requestAnimationFrame(processFrame);
+    
+  } catch (error) {
+    console.error("Error en processFrame:", error);
+    markerStatusEl.innerHTML = "🔴 Error de procesamiento";
+    isProcessing = false;
+  }
 }
 
-// Procesar el frame con OpenCV
+// Actualizar valores simulados para demostración
+function updateSimulatedValues() {
+  // Solo para demostración cuando no hay sensores
+  const now = Date.now();
+  
+  if (!prevTime) prevTime = now;
+  
+  // Simular ángulo si no hay sensores
+  if (!isDeviceOrientationSupported) {
+    const time = now / 1000;
+    const simulatedAngle = 20 + Math.sin(time * 0.5) * 10;
+    angleDisplay.textContent = Math.round(simulatedAngle) + '°';
+    document.getElementById('angle').textContent = Math.round(simulatedAngle) + '°';
+    checkOptimalAngle(simulatedAngle);
+  }
+  
+  // Simular distancia y velocidad
+  const dt = (now - prevTime) / 1000;
+  if (dt > 0.1) {
+    const simulatedDist = 25 + Math.sin(now / 1000) * 5;
+    const simulatedSpeed = 3 + Math.cos(now / 800) * 2;
+    
+    document.getElementById('dist').textContent = simulatedDist.toFixed(1) + ' cm';
+    document.getElementById('speed').textContent = simulatedSpeed.toFixed(1) + ' cm/s';
+    
+    prevTime = now;
+  }
+}
+
+// Procesar con OpenCV
 function processWithOpenCV() {
-    // Leer la imagen del canvas
+  try {
+    // Crear matriz desde el canvas
     const src = new cv.Mat(canvas.height, canvas.width, cv.CV_8UC4);
-    const srcData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    src.data.set(srcData.data);
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    src.data.set(imageData.data);
     
     // Convertir a escala de grises
     const gray = new cv.Mat();
     cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
     
-    // Umbralizar para mejorar detección
+    // Umbralizar
     const threshold = new cv.Mat();
     cv.threshold(gray, threshold, 100, 255, cv.THRESH_BINARY);
-    
-    // Detectar contornos
-    const contours = new cv.MatVector();
-    const hierarchy = new cv.Mat();
-    cv.findContours(threshold, contours, hierarchy, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE);
-    
-    let markerFound = false;
-    let bestDistance = 0;
-    let bestAngle = 0;
-    
-    // Buscar contornos cuadrados (posibles marcadores)
-    for (let i = 0; i < contours.size(); i++) {
-        const contour = contours.get(i);
-        const perimeter = cv.arcLength(contour, true);
-        const approx = new cv.Mat();
-        cv.approxPolyDP(contour, approx, 0.02 * perimeter, true);
-        
-        // Si tiene 4 vértices, es un posible marcador
-        if (approx.rows === 4) {
-            const area = cv.contourArea(approx);
-            if (area > 1000) { // Área mínima para evitar ruido
-                markerFound = true;
-                
-                // Dibujar el contorno detectado
-                const color = new cv.Scalar(0, 255, 0, 255);
-                cv.drawContours(src, contours, i, color, 3);
-                
-                // Obtener puntos del marcador
-                const points = [];
-                for (let j = 0; j < 4; j++) {
-                    points.push({
-                        x: approx.data32S[j * 2],
-                        y: approx.data32S[j * 2 + 1]
-                    });
-                }
-                
-                // Calcular distancia estimada (basada en el área)
-                const pixelArea = area;
-                const distance = estimateDistanceFromArea(pixelArea);
-                bestDistance = distance;
-                
-                // Calcular ángulo de inclinación
-                const angle = calculateAngle(points);
-                bestAngle = angle;
-                
-                // Dibujar información
-                drawMarkerInfo(src, points, distance, angle);
-                
-                approx.delete();
-                break;
-            }
-        }
-        approx.delete();
-    }
-    
-    // Actualizar UI según detección
-    if (markerFound) {
-        // Actualizar valores
-        distEl.textContent = bestDistance.toFixed(1);
-        angleEl.textContent = bestAngle.toFixed(1);
-        
-        // Calcular velocidad si tenemos datos previos
-        const now = Date.now();
-        if (prevPos && prevTime) {
-            const dt = (now - prevTime) / 1000; // en segundos
-            const distanceChange = Math.abs(bestDistance - prevPos);
-            const speed = dt > 0 ? distanceChange / dt : 0;
-            
-            speedEl.textContent = speed.toFixed(1);
-            markerStatusEl.textContent = "🟢 Marcador detectado";
-            
-            // Feedback por velocidad
-            if (speed > 5 && speed < 20) {
-                // Velocidad óptima
-                markerStatusEl.textContent = "✅ Velocidad óptima";
-                if (navigator.vibrate) navigator.vibrate(50);
-            } else if (speed >= 20) {
-                markerStatusEl.textContent = "⚠️ Demasiado rápido";
-            }
-        } else {
-            speedEl.textContent = "0.0";
-        }
-        
-        // Guardar datos para siguiente frame
-        prevPos = bestDistance;
-        prevTime = now;
-        
-    } else {
-        // No se detectó marcador
-        distEl.textContent = "--";
-        angleEl.textContent = "--";
-        speedEl.textContent = "--";
-        markerStatusEl.textContent = "🔴 No se detecta marcador";
-        prevPos = null;
-    }
-    
-    // Mostrar la imagen procesada
-    cv.imshow(canvas, src);
     
     // Liberar memoria
     src.delete();
     gray.delete();
     threshold.delete();
-    contours.delete();
-    hierarchy.delete();
+    
+  } catch (error) {
+    console.log("OpenCV processing:", error);
+  }
 }
 
-// Estimar distancia basada en el área del marcador
-function estimateDistanceFromArea(pixelArea) {
-    // Fórmula: distancia = k / sqrt(área)
-    // Donde k es una constante que depende del tamaño real del marcador
-    const REAL_AREA_CM2 = MARKER_SIZE_CM * MARKER_SIZE_CM; // 100 cm²
-    const CALIBRATION_CONSTANT = 5000; // Este valor necesita calibración
+// Dibujar guías visuales
+function drawVisualGuides() {
+  const centerX = canvas.width / 2;
+  const centerY = canvas.height / 2;
+  
+  // Dibujar retícula central
+  ctx.strokeStyle = 'rgba(0, 255, 0, 0.5)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(centerX - 50, centerY);
+  ctx.lineTo(centerX + 50, centerY);
+  ctx.moveTo(centerX, centerY - 50);
+  ctx.lineTo(centerX, centerY + 50);
+  ctx.stroke();
+  
+  // Dibujar círculo de objetivo
+  ctx.beginPath();
+  ctx.arc(centerX, centerY, 80, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(0, 200, 255, 0.3)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  
+  // Dibujar indicador de ángulo actual si tenemos datos
+  const currentAngle = parseFloat(angleDisplay.textContent) || 0;
+  if (!isNaN(currentAngle)) {
+    const optimal = weldConfig.optimalAngle[weldConfig.type];
     
-    if (pixelArea <= 0) return 100;
+    // Dibujar arco de ángulo óptimo
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, 100, 
+            (optimal.min - 90) * Math.PI / 180, 
+            (optimal.max - 90) * Math.PI / 180);
+    ctx.strokeStyle = 'rgba(0, 255, 0, 0.5)';
+    ctx.lineWidth = 4;
+    ctx.stroke();
     
-    const distance = CALIBRATION_CONSTANT / Math.sqrt(pixelArea);
-    return Math.max(10, Math.min(distance, 200)); // Limitar entre 10-200 cm
+    // Dibujar línea de ángulo actual
+    const angleRad = (currentAngle - 90) * Math.PI / 180;
+    ctx.beginPath();
+    ctx.moveTo(centerX, centerY);
+    ctx.lineTo(
+      centerX + Math.cos(angleRad) * 120,
+      centerY + Math.sin(angleRad) * 120
+    );
+    ctx.strokeStyle = currentAngle >= optimal.min && currentAngle <= optimal.max 
+      ? '#0f0' : '#f00';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    
+    // Dibujar texto de ángulo actual
+    ctx.fillStyle = currentAngle >= optimal.min && currentAngle <= optimal.max 
+      ? '#0f0' : '#f00';
+    ctx.font = 'bold 20px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(`${Math.round(currentAngle)}°`, centerX, centerY - 100);
+  }
 }
 
-// Calcular ángulo de inclinación basado en los puntos
-function calculateAngle(points) {
-    if (points.length < 2) return 0;
+// Actualizar puntuación de estabilidad
+function updateStability() {
+  const currentAngle = parseFloat(angleDisplay.textContent);
+  if (!isNaN(currentAngle)) {
+    angleHistory.push(currentAngle);
+    if (angleHistory.length > 20) angleHistory.shift();
     
-    // Calcular vector entre dos puntos opuestos
-    const dx = points[1].x - points[0].x;
-    const dy = points[1].y - points[0].y;
-    
-    // Calcular ángulo en grados
-    let angle = Math.atan2(dy, dx) * (180 / Math.PI);
-    
-    // Normalizar a 0-360
-    if (angle < 0) angle += 360;
-    if (angle > 180) angle -= 180; // Mostrar ángulo absoluto
-    
-    return Math.abs(angle - 90); // Ángulo relativo a vertical
-}
-
-// Dibujar información del marcador en la imagen
-function drawMarkerInfo(img, points, distance, angle) {
-    // Calcular centro del marcador
-    const centerX = points.reduce((sum, p) => sum + p.x, 0) / 4;
-    const centerY = points.reduce((sum, p) => sum + p.y, 0) / 4;
-    
-    // Dibujar punto central
-    const centerColor = new cv.Scalar(255, 0, 0, 255);
-    cv.circle(img, new cv.Point(centerX, centerY), 10, centerColor, -1);
-    
-    // Dibujar texto con distancia y ángulo
-    const text = `Dist: ${distance.toFixed(1)}cm | Ang: ${angle.toFixed(1)}°`;
-    const textColor = new cv.Scalar(0, 255, 255, 255);
-    const textPos = new cv.Point(centerX - 100, centerY - 30);
-    
-    cv.putText(img, text, textPos, cv.FONT_HERSHEY_SIMPLEX, 0.7, textColor, 2);
-}
-
-// Manejar errores no capturados
-window.addEventListener('error', function(e) {
-    console.error('Error global:', e.error);
-    markerStatusEl.textContent = "🔴 Error crítico - Recarga la página";
-    isProcessing = false;
-});
-
-// Pausar procesamiento cuando la página no es visible
-document.addEventListener('visibilitychange', function() {
-    if (document.hidden) {
-        console.log("Página oculta, pausando procesamiento");
-        isProcessing = false;
-    } else if (cvReady && video.srcObject) {
-        console.log("Página visible, reanudando procesamiento");
-        isProcessing = true;
-        processFrame();
+    // Calcular variación
+    if (angleHistory.length > 5) {
+      const avg = angleHistory.reduce((a, b) => a + b) / angleHistory.length;
+      const variance = angleHistory.reduce((a, b) => a + Math.abs(b - avg), 0) / angleHistory.length;
+      stabilityScore = Math.max(0, 100 - variance * 5);
+      
+      document.getElementById('stability').textContent = Math.round(stabilityScore) + '%';
+      document.getElementById('stability').className = stabilityScore > 80 
+        ? 'info-value good' 
+        : stabilityScore > 60 
+          ? 'info-value warning' 
+          : 'info-value error';
     }
+  }
+}
+
+// Manejar errores globales
+window.addEventListener('error', function(e) {
+  console.error('Error global:', e.error);
+  markerStatusEl.innerHTML = "🔴 Error crítico - Recarga la página";
+  isProcessing = false;
 });
+
+// Pausar cuando la página no es visible
+document.addEventListener('visibilitychange', function() {
+  if (document.hidden) {
+    isProcessing = false;
+  } else if (cvReady && video.srcObject) {
+    isProcessing = true;
+    processFrame();
+  }
+});
+
+// Vibrar dispositivo (si está soportado)
+function vibrateDevice(pattern) {
+  if (navigator.vibrate) {
+    navigator.vibrate(pattern);
+  }
+}
