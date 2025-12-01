@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
   <title>Soldadura Sim AR</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
@@ -17,8 +17,9 @@
   </button>
   
   <div id="app" style="display:none;">
-    <video id="camera" autoplay playsinline></video>
-    <canvas id="overlay"></canvas>
+    <!-- SOLO UN ELEMENTO VISUAL - el video está oculto -->
+    <canvas id="cameraView"></canvas>
+    
     <div id="info">
       <div class="info-row">🎯 Apunta al marcador (cuadrado negro)</div>
       <div class="info-row">Distancia: <span id="dist">--</span> cm</div>
@@ -29,7 +30,6 @@
     </div>
   </div>
 
-  <!-- NO usar OpenCV por ahora - versión simple -->
   <script src="app.js"></script>
 </body>
 </html>
