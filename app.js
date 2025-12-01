@@ -61,6 +61,9 @@ function processFrame() {
     prevTime = now;
   }
 
+  cv.aruco.detectMarkers(gray, dict, corners, ids, params);
+  console.log('ids.rows:', ids.rows);   // <-- mirá este número
+
   cv.imshow(canvas, src);
   src.delete(); gray.delete(); corners.delete(); ids.delete();
   requestAnimationFrame(processFrame);
