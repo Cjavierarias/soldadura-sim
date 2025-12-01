@@ -75,3 +75,9 @@ function playSound() {
   osc.start();
   osc.stop(ctx.currentTime + 0.05);
 }
+window.onload = () => {
+  const s = document.createElement('script');
+  s.src = 'https://docs.opencv.org/4.5.4/opencv.js';
+  s.onload = () => { console.log('OpenCV ready'); onOpenCvReady(); };
+  document.head.appendChild(s);
+};
