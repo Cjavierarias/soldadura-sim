@@ -21,74 +21,90 @@
     <video id="camera" autoplay playsinline></video>
     <canvas id="overlay"></canvas>
     
-    <!-- Panel de controles -->
-    <div id="controls">
-      <div class="control-group">
-        <div class="control-title">Tipo de Soldadura</div>
-        <select id="weldType">
-          <option value="mig">MIG/MAG</option>
-          <option value="tig">TIG</option>
-          <option value="electrodo">Electrodo</option>
-        </select>
+    <!-- Panel de controles MINIMIZABLE -->
+    <div id="controlsPanel" class="minimizable-panel">
+      <div class="panel-header" id="controlsHeader">
+        <h3>⚙️ Configuración</h3>
+        <button class="minimize-btn" id="minimizeControls">−</button>
       </div>
-      
-      <div class="control-group">
-        <div class="control-title">Material Base</div>
-        <select id="material">
-          <option value="acero">Acero al carbono</option>
-          <option value="inox">Acero inoxidable</option>
-          <option value="aluminio">Aluminio</option>
-        </select>
-      </div>
-      
-      <div class="control-group">
-        <div class="control-title">Sonidos</div>
-        <button id="soundToggle" class="active">🔊 Sonidos ON</button>
+      <div class="panel-content" id="controlsContent">
+        <div class="control-group">
+          <div class="control-title">Tipo de Soldadura</div>
+          <select id="weldType">
+            <option value="mig">MIG/MAG</option>
+            <option value="tig">TIG</option>
+            <option value="electrodo">Electrodo</option>
+          </select>
+        </div>
+        
+        <div class="control-group">
+          <div class="control-title">Material Base</div>
+          <select id="material">
+            <option value="acero">Acero al carbono</option>
+            <option value="inox">Acero inoxidable</option>
+            <option value="aluminio">Aluminio</option>
+          </select>
+        </div>
+        
+        <div class="control-group">
+          <div class="control-title">Sonidos</div>
+          <button id="soundToggle" class="active">🔊 Sonidos ON</button>
+        </div>
       </div>
     </div>
     
-    <!-- Panel de evaluación -->
-    <div id="evaluationPanel" class="evaluation-panel">
-      <div class="evaluation-header">
-        <h3>📊 Evaluación en Curso</h3>
-        <div class="timer" id="sessionTimer">00:00</div>
+    <!-- Panel de evaluación MINIMIZABLE -->
+    <div id="evaluationPanel" class="minimizable-panel">
+      <div class="panel-header" id="evalHeader">
+        <h3>📊 Evaluación</h3>
+        <button class="minimize-btn" id="minimizeEval">−</button>
       </div>
-      <div class="evaluation-stats">
-        <div class="stat-item">
-          <span class="stat-label">Tiempo:</span>
-          <span class="stat-value" id="evalTime">0s</span>
+      <div class="panel-content" id="evalContent">
+        <div class="evaluation-stats">
+          <div class="timer-display">
+            <div class="timer-label">Tiempo:</div>
+            <div class="timer-value" id="sessionTimer">00:00</div>
+          </div>
+          <div class="score-display">
+            <div class="score-label">Puntaje:</div>
+            <div class="score-value" id="evalScore">0</div>
+          </div>
         </div>
-        <div class="stat-item">
-          <span class="stat-label">Puntaje:</span>
-          <span class="stat-value" id="evalScore">0</span>
+        <div class="evaluation-controls">
+          <button id="startEvalBtn" class="eval-btn start">▶️ Iniciar</button>
+          <button id="stopEvalBtn" class="eval-btn stop" style="display:none;">⏹️ Detener</button>
+          <button id="resultsBtn" class="eval-btn results">📋 Resultados</button>
         </div>
-        <button id="startEvalBtn" class="eval-btn">▶️ Iniciar Evaluación</button>
-        <button id="stopEvalBtn" class="eval-btn stop" style="display:none;">⏹️ Detener</button>
       </div>
     </div>
     
     <!-- Indicador de ángulo -->
     <div id="angleIndicator">
       <div class="angle-value" id="angleDisplay">--°</div>
+      <div class="angle-label">Ángulo</div>
     </div>
     
     <!-- Panel de información -->
     <div id="info">
-      <div class="info-card">
-        <div class="control-title">Distancia</div>
-        <div class="info-value" id="dist">-- cm</div>
+      <div class="info-row">
+        <div class="info-item">
+          <div class="info-label">Distancia</div>
+          <div class="info-value" id="dist">-- cm</div>
+        </div>
+        <div class="info-item">
+          <div class="info-label">Ángulo</div>
+          <div class="info-value" id="currentAngle">--°</div>
+        </div>
       </div>
-      <div class="info-card">
-        <div class="control-title">Ángulo</div>
-        <div class="info-value" id="currentAngle">--°</div>
-      </div>
-      <div class="info-card">
-        <div class="control-title">Velocidad</div>
-        <div class="info-value" id="speed">-- cm/s</div>
-      </div>
-      <div class="info-card">
-        <div class="control-title">Estabilidad</div>
-        <div class="info-value" id="stability">--%</div>
+      <div class="info-row">
+        <div class="info-item">
+          <div class="info-label">Velocidad</div>
+          <div class="info-value" id="speed">-- cm/s</div>
+        </div>
+        <div class="info-item">
+          <div class="info-label">Estabilidad</div>
+          <div class="info-value" id="stability">--%</div>
+        </div>
       </div>
       <div class="info-status" id="markerStatus">
         🔍 Buscando marcador de soldadura...
@@ -100,11 +116,8 @@
       <button class="action-btn primary" id="calibrateBtn">
         📐 Calibrar Ángulo Cero
       </button>
-      <button class="action-btn secondary" id="resultsBtn">
-        📋 Ver Resultados
-      </button>
-      <button class="action-btn secondary" id="helpBtn">
-        ❓ Ayuda
+      <button class="action-btn secondary" id="togglePanelsBtn">
+        📱 Mostrar/Ocultar Paneles
       </button>
     </div>
     
@@ -196,15 +209,15 @@
       </div>
     </div>
     
-    <!-- Elementos de audio -->
+    <!-- Elementos de audio MEJORADOS -->
+    <audio id="beepHigh" preload="auto">
+      <source src="https://assets.mixkit.co/sfx/preview/mixkit-retro-arcade-game-beep-1095.mp3" type="audio/mpeg">
+    </audio>
+    <audio id="beepLow" preload="auto">
+      <source src="https://assets.mixkit.co/sfx/preview/mixkit-retro-game-emergency-alarm-1000.mp3" type="audio/mpeg">
+    </audio>
     <audio id="goodSound" preload="auto">
-      <source src="https://assets.mixkit.co/active_storage/sfx/287/287-preview.mp3" type="audio/mpeg">
-    </audio>
-    <audio id="lowAngleSound" preload="auto">
-      <source src="https://assets.mixkit.co/active_storage/sfx/1551/1551-preview.mp3" type="audio/mpeg">
-    </audio>
-    <audio id="highAngleSound" preload="auto">
-      <source src="https://assets.mixkit.co/active_storage/sfx/1000/1000-preview.mp3" type="audio/mpeg">
+      <source src="https://assets.mixkit.co/sfx/preview/mixkit-correct-answer-tone-2870.mp3" type="audio/mpeg">
     </audio>
   </div>
 
