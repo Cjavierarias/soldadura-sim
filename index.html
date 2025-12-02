@@ -84,7 +84,7 @@
       <div class="angle-label">Ángulo</div>
     </div>
     
-    <!-- Panel de información MEJORADO -->
+    <!-- Panel de información -->
     <div id="info">
       <div class="info-row">
         <div class="info-item">
@@ -117,14 +117,28 @@
       </div>
     </div>
     
-    <!-- Botones de acción -->
-    <div id="actionButtons">
-      <button class="action-btn primary" id="calibrateBtn">
-        📐 Calibrar Ángulo Cero
+    <!-- BOTÓN DE SOLDADURA (VOLUMEN) -->
+    <div id="weldButtonContainer">
+      <button id="weldButton" class="weld-button">
+        <span class="weld-icon">🔊</span>
+        <span class="weld-text">MANTÉN PRESIONADO PARA SOLDAR</span>
+        <div class="weld-progress" id="weldProgress"></div>
       </button>
-      <button class="action-btn secondary" id="togglePanelsBtn">
-        📱 Mostrar/Ocultar Paneles
-      </button>
+      <div class="weld-instruction">
+        ⚠️ Suelta para pausar / Toca para continuar
+      </div>
+    </div>
+    
+    <!-- Modal de confirmación de pausa -->
+    <div id="pauseModal" class="pause-modal">
+      <div class="pause-content">
+        <h3>⚠️ Soldadura Pausada</h3>
+        <p>¿Deseas continuar soldando o finalizar la evaluación?</p>
+        <div class="pause-actions">
+          <button id="continueWeldBtn" class="pause-btn continue">▶️ Continuar Soldando</button>
+          <button id="endWeldBtn" class="pause-btn end">⏹️ Finalizar Evaluación</button>
+        </div>
+      </div>
     </div>
     
     <!-- Modal de resultados -->
@@ -239,13 +253,19 @@
     
     <!-- Elementos de audio -->
     <audio id="beepHigh" preload="auto">
-      <source src="https://assets.mixkit.co/sfx/preview/mixkit-retro-arcade-game-beep-1095.mp3" type="audio/mpeg">
+      <source src="https://assets.mixkit.co/sfx/preview/mixkit-warning-alarm-buzzer-1551.mp3" type="audio/mpeg">
     </audio>
     <audio id="beepLow" preload="auto">
       <source src="https://assets.mixkit.co/sfx/preview/mixkit-retro-game-emergency-alarm-1000.mp3" type="audio/mpeg">
     </audio>
     <audio id="goodSound" preload="auto">
       <source src="https://assets.mixkit.co/sfx/preview/mixkit-correct-answer-tone-2870.mp3" type="audio/mpeg">
+    </audio>
+    <audio id="weldSound" preload="auto" loop>
+      <source src="https://assets.mixkit.co/sfx/preview/mixkit-welder-arc-welding-1184.mp3" type="audio/mpeg">
+    </audio>
+    <audio id="arcSound" preload="auto">
+      <source src="https://assets.mixkit.co/sfx/preview/mixkit-electric-arc-1101.mp3" type="audio/mpeg">
     </audio>
   </div>
 
