@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Calibración Patrón AR</title>
+  <style>
+    body { margin: 0; padding: 20px; background: black; color: white; }
+    video { width: 100%; max-width: 600px; border: 2px solid green; }
+    .calibration-info { background: rgba(0,0,0,0.8); padding: 15px; margin: 10px 0; border-radius: 10px; }
+  </style>
+</head>
+<body>
+  <h1>Calibración del Patrón AR</h1>
+  
+  <div class="calibration-info">
+    <h3>Instrucciones:</h3>
+    <ol>
+      <li>Imprime el patrón 4x4_1000.png en tamaño <strong>20x20 cm</strong></li>
+      <li>Colócalo en una superficie plana</li>
+      <li>Apunta la cámara al patrón</li>
+      <li>Mantén una distancia de <strong>30-50 cm</strong></li>
+      <li>Asegura buena iluminación</li>
+    </ol>
+  </div>
+  
+  <video id="camera" autoplay playsinline></video>
+  <canvas id="overlay" style="position: absolute; top: 20px; left: 20px;"></canvas>
+  
+  <div id="calibrationStatus" class="calibration-info">
+    Estado: <span id="status">Iniciando...</span>
+  </div>
+  
+  <div class="calibration-info">
+    <h3>Parámetros de calibración:</h3>
+    <div>Tamaño real del patrón: <input id="patternSize" value="20"> cm</div>
+    <div>Distancia de referencia: <input id="refDistance" value="30"> cm</div>
+    <button onclick="saveCalibration()">Guardar Calibración</button>
+  </div>
+  
+  <script>
+    const video = document.getElementById('camera');
+    const canvas = document.getElementById('overlay');
+    const ctx = canvas.getContext('2d');
+    const statusEl = document.getElementById('status');
+    
+    // Iniciar cámara
+    async function initCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "environment", width: { ideal: 1280 } }
+        });
+        video.srcObject = stream;
+        
+        video.onloadedmetadata = () => {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          detectPattern();
+        };
+      } catch (err) {
+        statusEl.textContent = "Error cámara: " + err.message;
+      }
+    }
+    
+    function detectPattern() {
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      
+      // Procesamiento simple para calibración
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      
+      // Buscar contraste alto (bordes del patrón)
+      let contrastPoints = [];
+      for (let i = 0; i < imageData.data.length; i += 4) {
+        const r = imageData.data[i];
+        const g = imageData.data[i + 1];
+        const b = imageData.data[i + 2];
+        const brightness = (r + g + b) / 3;
+        
+        if (brightness < 50 || brightness > 200) {
+          const x = (i / 4) % canvas.width;
+          const y = Math.floor((i / 4) / canvas.width);
+          contrastPoints.push({ x, y });
+        }
+      }
+      
+      // Dibujar puntos de contraste
+      ctx.fillStyle = 'rgba(255, 0, 0, 0.5)';
+      contrastPoints.forEach(p => {
+        ctx.fillRect(p.x, p.y, 2, 2);
+      });
+      
+      statusEl.textContent = `Puntos detectados: ${contrastPoints.length}`;
+      
+      requestAnimationFrame(detectPattern);
+    }
+    
+    function saveCalibration() {
+      const patternSize = document.getElementById('patternSize').value;
+      const refDistance = document.getElementById('refDistance').value;
+      
+      localStorage.setItem('weldCalibration', JSON.stringify({
+        patternSize: parseFloat(patternSize),
+        refDistance: parseFloat(refDistance),
+        calibratedAt: new Date().toISOString()
+      }));
+      
+      statusEl.textContent = "Calibración guardada!";
+      setTimeout(() => {
+        window.location.href = 'index.html';
+      }, 2000);
+    }
+    
+    initCamera();
+  </script>
+</body>
+</html>
