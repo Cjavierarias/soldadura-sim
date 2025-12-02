@@ -37,6 +37,7 @@ let appContainer = null;
 let loading = null;
 let loadStatus = null;
 let angleDisplay = null;
+let currentAngleEl = null;
 let markerStatusEl = null;
 
 // Sensores del dispositivo
@@ -50,7 +51,27 @@ let markerDetected = false;
 let markerSize = 0;
 const REAL_MARKER_SIZE_CM = 10; // Tamaño real del marcador en cm
 
-// Inicialización cuando el DOM está listo
+// ============================================
+// SISTEMA DE EVALUACIÓN TEMPORAL
+// ============================================
+
+let evaluationSession = {
+  active: false,
+  startTime: null,
+  duration: 0,
+  dataPoints: [],
+  metrics: {
+    angleScores: [],
+    stabilityScores: [],
+    speedValues: [],
+    distanceValues: []
+  }
+};
+
+// ============================================
+// INICIALIZACIÓN
+// ============================================
+
 document.addEventListener('DOMContentLoaded', function() {
   console.log("DOM cargado");
   
@@ -62,6 +83,7 @@ document.addEventListener('DOMContentLoaded', function() {
   video = document.getElementById('camera');
   canvas = document.getElementById('overlay');
   angleDisplay = document.getElementById('angleDisplay');
+  currentAngleEl = document.getElementById('currentAngle');
   markerStatusEl = document.getElementById('markerStatus');
   
   // Contexto del canvas
@@ -73,7 +95,7 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('material').addEventListener('change', updateWeldConfig);
   document.getElementById('soundToggle').addEventListener('click', toggleSound);
   document.getElementById('calibrateBtn').addEventListener('click', calibrateZeroAngle);
-  document.getElementById('helpBtn').addEventListener('click', showHelp);
+  document.getElementById('resultsBtn').addEventListener('click', showResults);
   
   // Inicializar audio
   initAudio();
@@ -90,7 +112,6 @@ document.addEventListener('DOMContentLoaded', function() {
 // Inicializar sistema de audio
 function initAudio() {
   try {
-    // Crear contexto de audio para sonidos generados
     audioContext = new (window.AudioContext || window.webkitAudioContext)();
     console.log("✅ Audio inicializado");
   } catch (e) {
@@ -112,7 +133,6 @@ function createBeepSound(frequency, duration, type = 'sine') {
     oscillator.frequency.value = frequency;
     oscillator.type = type;
     
-    // Configurar envolvente
     const now = audioContext.currentTime;
     gainNode.gain.setValueAtTime(0.1, now);
     gainNode.gain.exponentialRampToValueAtTime(0.01, now + duration);
@@ -136,11 +156,10 @@ function checkDeviceSensors() {
   }
 }
 
-// Manejar orientación del dispositivo
+// Manejar orientación del dispositivo - CORREGIDO
 function handleDeviceOrientation(event) {
   if (event.beta !== null) {
     // beta: inclinación frontal (-180 a 180)
-    // Convertir a ángulo absoluto entre 0-90
     let rawAngle = Math.abs(event.beta);
     
     // Limitar a 0-90 grados
@@ -158,7 +177,7 @@ function handleDeviceOrientation(event) {
     // Asegurar que esté entre 0-90
     deviceAngle = Math.max(0, Math.min(90, deviceAngle));
     
-    // Actualizar displays
+    // Actualizar displays - CORREGIDO: usar currentAngleEl en lugar de angleValue
     updateAngleDisplay(deviceAngle);
     
     // Verificar ángulo óptimo
@@ -166,24 +185,23 @@ function handleDeviceOrientation(event) {
   }
 }
 
-// Actualizar display del ángulo
+// Actualizar display del ángulo - CORREGIDO
 function updateAngleDisplay(angle) {
   const roundedAngle = Math.round(angle);
   angleDisplay.textContent = roundedAngle + '°';
-  document.getElementById('angleValue').textContent = roundedAngle + '°';
+  currentAngleEl.textContent = roundedAngle + '°';  // CORREGIDO: usar currentAngleEl
   
   // Actualizar color según ángulo óptimo
-  const angleEl = document.getElementById('angleValue');
   const optimal = weldConfig.optimalAngle[weldConfig.type];
   
   if (roundedAngle >= optimal.min && roundedAngle <= optimal.max) {
-    angleEl.className = 'info-value good';
+    currentAngleEl.className = 'info-value good';
     markerStatusEl.innerHTML = '✅ Ángulo óptimo';
   } else if (roundedAngle < optimal.min) {
-    angleEl.className = 'info-value warning';
+    currentAngleEl.className = 'info-value warning';
     markerStatusEl.innerHTML = '⚠️ Ángulo bajo';
   } else {
-    angleEl.className = 'info-value error';
+    currentAngleEl.className = 'info-value error';
     markerStatusEl.innerHTML = '⚠️ Ángulo alto';
   }
 }
@@ -297,24 +315,6 @@ function updateWeldConfig() {
   markerStatusEl.innerHTML = `🎯 Ángulo óptimo: ${optimal.min}° - ${optimal.max}°`;
 }
 
-// Mostrar ayuda
-function showHelp() {
-  alert("SIMULADOR DE SOLDADURA\n\n" +
-        "INSTRUCCIONES:\n" +
-        "1. Imprime el marcador ARUCO\n" +
-        "2. Colócalo en la superficie\n" +
-        "3. Sostén el celular como antorcha\n" +
-        "4. Calibra el ángulo cero\n" +
-        "5. Mantén el ángulo en rango óptimo\n\n" +
-        "RANGOS ÓPTIMOS:\n" +
-        "• MIG/MAG: 15°-25°\n" +
-        "• TIG: 10°-20°\n" +
-        "• Electrodo: 5°-15°\n\n" +
-        "SONIDOS:\n" +
-        "• Agudo: ángulo demasiado bajo\n" +
-        "• Grave: ángulo demasiado alto");
-}
-
 // Callback cuando OpenCV.js se carga
 function onOpenCvReady() {
   console.log("✅ OpenCV.js listo!");
@@ -330,888 +330,3 @@ async function startApp() {
   
   try {
     startBtn.style.display = 'none';
-    loadStatus.textContent = "Solicitando acceso a cámara...";
-    loading.style.display = 'flex';
-    
-    // Solicitar acceso a cámara
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: "environment",
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
-        frameRate: { ideal: 30 }
-      }
-    });
-    
-    video.srcObject = stream;
-    
-    await new Promise((resolve) => {
-      video.onloadedmetadata = () => {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        console.log("Canvas size:", canvas.width, "x", canvas.height);
-        resolve();
-      };
-    });
-    
-    // Esperar a que el video comience
-    await new Promise((resolve) => {
-      video.onplaying = () => {
-        console.log("✅ Video reproduciéndose");
-        resolve();
-      };
-      setTimeout(resolve, 1000);
-    });
-    
-    // Mostrar aplicación
-    loading.style.display = 'none';
-    appContainer.style.display = 'block';
-    
-    // Iniciar procesamiento
-    isProcessing = true;
-    processFrame();
-    
-    // Configurar inicial
-    updateWeldConfig();
-    
-    // Solicitar permiso para sensores en iOS
-    if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
-      try {
-        const permission = await DeviceMotionEvent.requestPermission();
-        if (permission === 'granted') {
-          console.log("✅ Permiso para sensores concedido");
-        }
-      } catch (e) {
-        console.log("Permiso para sensores no concedido:", e);
-      }
-    }
-    
-  } catch (error) {
-    console.error("❌ Error:", error);
-    loadStatus.textContent = `Error: ${error.message}`;
-    startBtn.style.display = 'block';
-    startBtn.textContent = "🔄 Reintentar";
-    
-    if (error.name === 'NotAllowedError') {
-      alert("Permiso de cámara denegado. Por favor, permite el acceso a la cámara.");
-    } else if (error.name === 'NotFoundError') {
-      alert("No se encontró cámara trasera. Usa un dispositivo con cámara trasera.");
-    }
-  }
-}
-
-// Procesar cada frame
-function processFrame() {
-  if (!isProcessing) return;
-  
-  try {
-    // Dibujar video en canvas
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    
-    // Procesar con OpenCV si está listo
-    if (cvReady && cv.Mat) {
-      processWithOpenCV();
-    } else {
-      // Si no hay OpenCV, usar datos simulados
-      simulateMarkerData();
-    }
-    
-    // Dibujar guías visuales
-    drawVisualGuides();
-    
-    // Actualizar estabilidad
-    updateStability();
-    
-    // Continuar procesamiento
-    requestAnimationFrame(processFrame);
-    
-  } catch (error) {
-    console.error("Error en processFrame:", error);
-    markerStatusEl.innerHTML = "⚠️ Error de procesamiento";
-  }
-}
-
-// Simular datos de marcador cuando OpenCV no está disponible
-function simulateMarkerData() {
-  const now = Date.now();
-  
-  // Simular ángulo si no hay sensores
-  if (!isDeviceOrientationSupported) {
-    const time = now / 1000;
-    const simulatedAngle = 20 + Math.sin(time * 0.3) * 8;
-    updateAngleDisplay(simulatedAngle);
-    checkOptimalAngle(simulatedAngle);
-  }
-  
-  // Simular detección de marcador intermitente
-  const markerVisible = Math.sin(now / 1000) > 0;
-  
-  if (markerVisible) {
-    // Calcular distancia basada en posición "simulada"
-    const timeVariation = Math.sin(now / 1500) * 0.3 + 0.7;
-    const simulatedDistance = 20 + timeVariation * 10; // 20-30 cm
-    
-    // Calcular velocidad
-    let simulatedSpeed = 0;
-    if (prevTime > 0) {
-      const dt = (now - prevTime) / 1000; // segundos
-      const distanceChange = Math.abs(simulatedDistance - prevDistance);
-      simulatedSpeed = dt > 0 ? distanceChange / dt : 0;
-    }
-    
-    // Actualizar UI
-    updateDistanceAndSpeed(simulatedDistance, simulatedSpeed);
-    
-    // Guardar para siguiente frame
-    prevDistance = simulatedDistance;
-    prevTime = now;
-    
-    markerStatusEl.innerHTML = '🎯 Marcador detectado (simulado)';
-  } else {
-    markerStatusEl.innerHTML = '🔍 Buscando marcador...';
-  }
-}
-
-// Actualizar distancia y velocidad en UI
-function updateDistanceAndSpeed(distance, speed) {
-  document.getElementById('dist').textContent = distance.toFixed(1) + ' cm';
-  document.getElementById('speed').textContent = speed.toFixed(1) + ' cm/s';
-}
-
-// Procesar con OpenCV para detección real de marcador
-function processWithOpenCV() {
-  try {
-    const src = new cv.Mat(canvas.height, canvas.width, cv.CV_8UC4);
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    src.data.set(imageData.data);
-    
-    // Convertir a escala de grises
-    const gray = new cv.Mat();
-    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-    
-    // Aplicar umbral
-    const binary = new cv.Mat();
-    cv.threshold(gray, binary, 100, 255, cv.THRESH_BINARY);
-    
-    // Buscar contornos
-    const contours = new cv.MatVector();
-    const hierarchy = new cv.Mat();
-    cv.findContours(binary, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-    
-    let foundMarker = false;
-    let currentDistance = 25; // Distancia por defecto
-    let markerCenter = null;
-    const now = Date.now();
-    
-    // Buscar contornos cuadrados (posibles marcadores)
-    for (let i = 0; i < contours.size(); i++) {
-      const contour = contours.get(i);
-      const perimeter = cv.arcLength(contour, true);
-      const approx = new cv.Mat();
-      cv.approxPolyDP(contour, approx, 0.02 * perimeter, true);
-      
-      // Si tiene 4 vértices, podría ser nuestro marcador
-      if (approx.rows === 4) {
-        const area = cv.contourArea(approx);
-        
-        if (area > 500) { // Área mínima
-          foundMarker = true;
-          
-          // Calcular centro
-          const moments = cv.moments(contour);
-          if (moments.m00 !== 0) {
-            const cx = moments.m10 / moments.m00;
-            const cy = moments.m01 / moments.m00;
-            markerCenter = { x: cx, y: cy };
-          }
-          
-          // Calcular distancia basada en área (área más grande = más cerca)
-          const distance = estimateDistanceFromArea(area);
-          currentDistance = distance;
-          
-          // Dibujar contorno
-          const color = new cv.Scalar(0, 255, 0, 255);
-          cv.drawContours(src, contours, i, color, 3);
-          
-          // Dibujar información
-          if (markerCenter) {
-            const text = `Dist: ${distance.toFixed(1)}cm`;
-            const textPos = new cv.Point(markerCenter.x - 50, markerCenter.y - 20);
-            cv.putText(src, text, textPos, cv.FONT_HERSHEY_SIMPLEX, 0.7, color, 2);
-          }
-          
-          break;
-        }
-      }
-      approx.delete();
-    }
-    
-    // Actualizar datos si se encontró marcador
-    if (foundMarker) {
-      markerDetected = true;
-      
-      // Calcular velocidad si tenemos datos previos
-      let speed = 0;
-      if (lastMarkerPosition && lastMarkerTime) {
-        const dt = (now - lastMarkerTime) / 1000;
-        if (dt > 0 && markerCenter) {
-          const dx = markerCenter.x - lastMarkerPosition.x;
-          const dy = markerCenter.y - lastMarkerPosition.y;
-          const distanceMoved = Math.sqrt(dx * dx + dy * dy);
-          
-          // Convertir pixels a cm (estimación)
-          const pixelsPerCm = canvas.width / 50; // Asumiendo 50cm de ancho de campo de visión
-          speed = (distanceMoved / pixelsPerCm) / dt;
-        }
-      }
-      
-      // Actualizar UI
-      updateDistanceAndSpeed(currentDistance, speed);
-      markerStatusEl.innerHTML = '🎯 Marcador detectado';
-      
-      // Guardar datos para siguiente frame
-      lastMarkerPosition = markerCenter;
-      lastMarkerTime = now;
-      prevDistance = currentDistance;
-      
-    } else {
-      markerDetected = false;
-      markerStatusEl.innerHTML = '🔍 Buscando marcador...';
-    }
-    
-    // Mostrar imagen procesada
-    cv.imshow(canvas, src);
-    
-    // Liberar memoria
-    src.delete();
-    gray.delete();
-    binary.delete();
-    contours.delete();
-    hierarchy.delete();
-    
-  } catch (error) {
-    console.log("Error en OpenCV:", error);
-    // Si falla OpenCV, usar simulación
-    simulateMarkerData();
-  }
-}
-
-// Estimar distancia basada en área del marcador
-function estimateDistanceFromArea(pixelArea) {
-  // Fórmula simplificada: distancia = k / sqrt(área)
-  const CALIBRATION_CONSTANT = 1500; // Ajustar según necesidad
-  
-  if (pixelArea <= 0) return 30;
-  
-  const distance = CALIBRATION_CONSTANT / Math.sqrt(pixelArea);
-  return Math.max(10, Math.min(distance, 50)); // Limitar entre 10-50 cm
-}
-
-// Dibujar guías visuales
-function drawVisualGuides() {
-  const centerX = canvas.width / 2;
-  const centerY = canvas.height / 2;
-  
-  // Dibujar retícula central
-  ctx.strokeStyle = 'rgba(0, 255, 0, 0.6)';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(centerX - 40, centerY);
-  ctx.lineTo(centerX + 40, centerY);
-  ctx.moveTo(centerX, centerY - 40);
-  ctx.lineTo(centerX, centerY + 40);
-  ctx.stroke();
-  
-  // Dibujar círculo objetivo
-  ctx.beginPath();
-  ctx.arc(centerX, centerY, 60, 0, Math.PI * 2);
-  ctx.strokeStyle = 'rgba(0, 200, 255, 0.4)';
-  ctx.lineWidth = 2;
-  ctx.stroke();
-  
-  // Dibujar guía de ángulo si tenemos datos
-  const angle = parseFloat(angleDisplay.textContent);
-  if (!isNaN(angle) && angle >= 0) {
-    const optimal = weldConfig.optimalAngle[weldConfig.type];
-    
-    // Dibujar arco de rango óptimo
-    ctx.beginPath();
-    ctx.arc(centerX, centerY, 80, 
-            (optimal.min - 90) * Math.PI / 180, 
-            (optimal.max - 90) * Math.PI / 180);
-    ctx.strokeStyle = 'rgba(0, 255, 0, 0.3)';
-    ctx.lineWidth = 6;
-    ctx.stroke();
-    
-    // Dibujar línea de ángulo actual
-    const angleRad = (angle - 90) * Math.PI / 180;
-    ctx.beginPath();
-    ctx.moveTo(centerX, centerY);
-    ctx.lineTo(
-      centerX + Math.cos(angleRad) * 100,
-      centerY + Math.sin(angleRad) * 100
-    );
-    
-    // Color según rango óptimo
-    if (angle >= optimal.min && angle <= optimal.max) {
-      ctx.strokeStyle = '#0f0';
-    } else if (angle < optimal.min) {
-      ctx.strokeStyle = '#ff0'; // Amarillo para ángulo bajo
-    } else {
-      ctx.strokeStyle = '#f00'; // Rojo para ángulo alto
-    }
-    
-    ctx.lineWidth = 4;
-    ctx.stroke();
-  }
-}
-
-// Actualizar puntuación de estabilidad
-function updateStability() {
-  const currentAngle = parseFloat(angleDisplay.textContent);
-  if (!isNaN(currentAngle)) {
-    angleHistory.push(currentAngle);
-    if (angleHistory.length > 30) angleHistory.shift();
-    
-    if (angleHistory.length >= 10) {
-      // Calcular desviación estándar
-      const mean = angleHistory.reduce((a, b) => a + b) / angleHistory.length;
-      const variance = angleHistory.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / angleHistory.length;
-      const stdDev = Math.sqrt(variance);
-      
-      // Convertir a puntuación de estabilidad (0-100%)
-      stabilityScore = Math.max(0, 100 - stdDev * 10);
-      
-      document.getElementById('stability').textContent = Math.round(stabilityScore) + '%';
-      
-      // Color según estabilidad
-      const stabilityEl = document.getElementById('stability');
-      if (stabilityScore >= 80) {
-        stabilityEl.className = 'info-value good';
-      } else if (stabilityScore >= 60) {
-        stabilityEl.className = 'info-value warning';
-      } else {
-        stabilityEl.className = 'info-value error';
-      }
-    }
-  }
-}
-
-// Manejar errores globales
-window.addEventListener('error', function(e) {
-  console.error('Error global:', e.error);
-  markerStatusEl.innerHTML = "⚠️ Error - Recarga la página";
-  isProcessing = false;
-});
-
-// Pausar cuando la página no es visible
-document.addEventListener('visibilitychange', function() {
-  if (document.hidden) {
-    isProcessing = false;
-  } else if (video.srcObject) {
-    isProcessing = true;
-    processFrame();
-  }
-});
-
-// Vibrar dispositivo (feedback táctil)
-function vibrateDevice(pattern) {
-  if (navigator.vibrate) {
-    navigator.vibrate(pattern);
-  }
-}
-// ============================================
-// SISTEMA DE EVALUACIÓN TEMPORAL
-// ============================================
-
-let evaluationSession = {
-  active: false,
-  startTime: null,
-  duration: 0,
-  dataPoints: [],
-  metrics: {
-    angleScores: [],
-    stabilityScores: [],
-    speedValues: [],
-    distanceValues: []
-  }
-};
-
-// Inicializar sistema de evaluación
-function initEvaluationSystem() {
-  console.log("Inicializando sistema de evaluación...");
-  
-  // Configurar botones de evaluación
-  document.getElementById('startEvalBtn').addEventListener('click', startEvaluation);
-  document.getElementById('stopEvalBtn').addEventListener('click', stopEvaluation);
-  document.getElementById('resultsBtn').addEventListener('click', showResults);
-  document.getElementById('newSessionBtn').addEventListener('click', startNewSession);
-  document.getElementById('shareResultsBtn').addEventListener('click', shareResults);
-  document.querySelector('.close-modal').addEventListener('click', hideResults);
-  
-  // Cerrar modal haciendo clic fuera
-  document.getElementById('resultsModal').addEventListener('click', function(e) {
-    if (e.target === this) hideResults();
-  });
-  
-  // Mostrar panel de evaluación después de iniciar
-  setTimeout(() => {
-    document.getElementById('evaluationPanel').style.display = 'block';
-  }, 1000);
-}
-
-// Iniciar evaluación
-function startEvaluation() {
-  if (evaluationSession.active) return;
-  
-  evaluationSession = {
-    active: true,
-    startTime: Date.now(),
-    duration: 0,
-    dataPoints: [],
-    metrics: {
-      angleScores: [],
-      stabilityScores: [],
-      speedValues: [],
-      distanceValues: []
-    }
-  };
-  
-  // Actualizar UI
-  document.getElementById('startEvalBtn').style.display = 'none';
-  document.getElementById('stopEvalBtn').style.display = 'block';
-  document.getElementById('markerStatus').innerHTML = '📊 Evaluación iniciada';
-  
-  console.log("✅ Evaluación iniciada");
-  
-  // Actualizar timer cada segundo
-  updateEvaluationTimer();
-}
-
-// Detener evaluación
-function stopEvaluation() {
-  if (!evaluationSession.active) return;
-  
-  evaluationSession.active = false;
-  evaluationSession.duration = Date.now() - evaluationSession.startTime;
-  
-  // Procesar datos y mostrar resultados
-  processEvaluationData();
-  showResults();
-  
-  // Actualizar UI
-  document.getElementById('startEvalBtn').style.display = 'block';
-  document.getElementById('stopEvalBtn').style.display = 'none';
-  
-  console.log("⏹️ Evaluación finalizada. Duración:", evaluationSession.duration / 1000, "segundos");
-}
-
-// Actualizar timer de evaluación
-function updateEvaluationTimer() {
-  if (!evaluationSession.active) return;
-  
-  const elapsed = Date.now() - evaluationSession.startTime;
-  const minutes = Math.floor(elapsed / 60000);
-  const seconds = Math.floor((elapsed % 60000) / 1000);
-  
-  // Formatear tiempo
-  const timeStr = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-  document.getElementById('sessionTimer').textContent = timeStr;
-  document.getElementById('evalTime').textContent = `${Math.floor(elapsed / 1000)}s`;
-  
-  // Actualizar cada segundo
-  setTimeout(updateEvaluationTimer, 1000);
-}
-
-// Registrar datos para evaluación
-function recordEvaluationData() {
-  if (!evaluationSession.active) return;
-  
-  const currentAngle = parseFloat(angleDisplay.textContent) || 0;
-  const currentStability = stabilityScore || 0;
-  const currentSpeed = parseFloat(document.getElementById('speed').textContent) || 0;
-  const currentDistance = parseFloat(document.getElementById('dist').textContent) || 0;
-  
-  // Solo registrar si tenemos datos válidos
-  if (!isNaN(currentAngle) && currentAngle > 0) {
-    const dataPoint = {
-      timestamp: Date.now() - evaluationSession.startTime,
-      angle: currentAngle,
-      stability: currentStability,
-      speed: currentSpeed,
-      distance: currentDistance
-    };
-    
-    evaluationSession.dataPoints.push(dataPoint);
-    
-    // Calcular puntaje en tiempo real
-    const optimal = weldConfig.optimalAngle[weldConfig.type];
-    const angleScore = calculateAngleScore(currentAngle, optimal);
-    
-    evaluationSession.metrics.angleScores.push(angleScore);
-    evaluationSession.metrics.stabilityScores.push(currentStability);
-    evaluationSession.metrics.speedValues.push(currentSpeed);
-    evaluationSession.metrics.distanceValues.push(currentDistance);
-    
-    // Actualizar puntaje en UI
-    updateLiveScore();
-  }
-}
-
-// Calcular puntaje del ángulo
-function calculateAngleScore(angle, optimal) {
-  if (angle >= optimal.min && angle <= optimal.max) {
-    return 100; // Puntaje perfecto
-  } else if (angle < optimal.min) {
-    // Más cerca del mínimo = mejor puntaje
-    const diff = optimal.min - angle;
-    return Math.max(0, 100 - (diff * 20));
-  } else {
-    // Más cerca del máximo = mejor puntaje
-    const diff = angle - optimal.max;
-    return Math.max(0, 100 - (diff * 20));
-  }
-}
-
-// Actualizar puntaje en vivo
-function updateLiveScore() {
-  if (evaluationSession.metrics.angleScores.length === 0) return;
-  
-  // Calcular puntaje promedio
-  const avgAngleScore = evaluationSession.metrics.angleScores.reduce((a, b) => a + b, 0) / evaluationSession.metrics.angleScores.length;
-  const avgStability = evaluationSession.metrics.stabilityScores.reduce((a, b) => a + b, 0) / evaluationSession.metrics.stabilityScores.length;
-  
-  // Puntaje combinado (70% ángulo, 30% estabilidad)
-  const liveScore = Math.round((avgAngleScore * 0.7) + (avgStability * 0.3));
-  
-  document.getElementById('evalScore').textContent = liveScore;
-  document.getElementById('evalScore').style.color = getScoreColor(liveScore);
-}
-
-// Obtener color según puntaje
-function getScoreColor(score) {
-  if (score >= 80) return '#0f0';
-  if (score >= 60) return '#ff0';
-  return '#f00';
-}
-
-// Procesar datos de evaluación
-function processEvaluationData() {
-  if (evaluationSession.dataPoints.length === 0) return;
-  
-  const optimal = weldConfig.optimalAngle[weldConfig.type];
-  
-  // Calcular métricas
-  const angleScores = evaluationSession.metrics.angleScores;
-  const stabilityScores = evaluationSession.metrics.stabilityScores;
-  const speedValues = evaluationSession.metrics.speedValues;
-  const distanceValues = evaluationSession.metrics.distanceValues;
-  
-  // 1. Puntaje de ángulo
-  const avgAngleScore = angleScores.reduce((a, b) => a + b, 0) / angleScores.length;
-  const angleInOptimalRange = angleScores.filter(score => score === 100).length / angleScores.length * 100;
-  
-  // 2. Puntaje de estabilidad
-  const avgStability = stabilityScores.reduce((a, b) => a + b, 0) / stabilityScores.length;
-  
-  // 3. Puntaje de velocidad (consistencia)
-  const speedStdDev = calculateStdDev(speedValues.filter(v => v > 0));
-  const speedScore = Math.max(0, 100 - (speedStdDev * 10));
-  
-  // 4. Puntaje de distancia (15-25 cm es ideal)
-  const avgDistance = distanceValues.reduce((a, b) => a + b, 0) / distanceValues.length;
-  const distanceScore = calculateDistanceScore(avgDistance);
-  
-  // Puntaje final
-  const finalScore = Math.round(
-    (avgAngleScore * 0.4) +
-    (avgStability * 0.3) +
-    (speedScore * 0.15) +
-    (distanceScore * 0.15)
-  );
-  
-  // Guardar resultados
-  evaluationSession.results = {
-    duration: evaluationSession.duration,
-    finalScore: finalScore,
-    metrics: {
-      angle: {
-        score: Math.round(avgAngleScore),
-        optimalPercentage: Math.round(angleInOptimalRange)
-      },
-      stability: {
-        score: Math.round(avgStability)
-      },
-      speed: {
-        score: Math.round(speedScore),
-        consistency: Math.round(100 - speedStdDev * 5)
-      },
-      distance: {
-        score: Math.round(distanceScore),
-        average: Math.round(avgDistance * 10) / 10
-      }
-    }
-  };
-  
-  // Generar recomendaciones
-  evaluationSession.recommendations = generateRecommendations(evaluationSession.results);
-  
-  console.log("📊 Resultados procesados:", evaluationSession.results);
-}
-
-// Calcular desviación estándar
-function calculateStdDev(values) {
-  if (values.length < 2) return 0;
-  
-  const mean = values.reduce((a, b) => a + b) / values.length;
-  const variance = values.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / values.length;
-  return Math.sqrt(variance);
-}
-
-// Calcular puntaje de distancia
-function calculateDistanceScore(distance) {
-  // Distancia ideal: 20cm (+/- 5cm)
-  const idealDistance = 20;
-  const diff = Math.abs(distance - idealDistance);
-  
-  if (diff <= 5) {
-    return 100; // Perfecto
-  } else if (diff <= 10) {
-    return 70; // Aceptable
-  } else if (diff <= 15) {
-    return 40; // Regular
-  } else {
-    return 10; // Necesita mejorar
-  }
-}
-
-// Generar recomendaciones
-function generateRecommendations(results) {
-  const recommendations = [];
-  const metrics = results.metrics;
-  
-  // Recomendaciones basadas en ángulo
-  if (metrics.angle.score < 70) {
-    recommendations.push("Practica mantener el ángulo entre 15°-25° para soldadura MIG");
-    if (metrics.angle.optimalPercentage < 50) {
-      recommendations.push("Concéntrate en mantener el ángulo constante durante más tiempo");
-    }
-  }
-  
-  // Recomendaciones basadas en estabilidad
-  if (metrics.stability.score < 70) {
-    recommendations.push("Mejora la estabilidad de tu mano apoyando el codo");
-    if (metrics.stability.score < 50) {
-      recommendations.push("Intenta ejercicios de respiración para reducir el temblor");
-    }
-  }
-  
-  // Recomendaciones basadas en velocidad
-  if (metrics.speed.score < 70) {
-    recommendations.push("Mantén una velocidad constante de 5-15 cm/s");
-    if (metrics.speed.consistency < 60) {
-      recommendations.push("Evita cambios bruscos de velocidad durante la soldadura");
-    }
-  }
-  
-  // Recomendaciones basadas en distancia
-  if (metrics.distance.score < 70) {
-    recommendations.push("Mantén la antorcha a 15-25 cm de la pieza");
-    if (metrics.distance.average < 15) {
-      recommendations.push("Aleja un poco la antorcha para evitar salpicaduras");
-    } else if (metrics.distance.average > 25) {
-      recommendations.push("Acerca la antorcha para mejor concentración del calor");
-    }
-  }
-  
-  // Recomendaciones generales si todo está bien
-  if (recommendations.length === 0) {
-    recommendations.push("¡Excelente técnica! Mantén la práctica para perfeccionar");
-    recommendations.push("Prueba con diferentes tipos de soldadura para ampliar habilidades");
-  }
-  
-  return recommendations;
-}
-
-// Mostrar resultados
-function showResults() {
-  if (!evaluationSession.results) {
-    alert("Primero completa una sesión de evaluación");
-    return;
-  }
-  
-  const results = evaluationSession.results;
-  const metrics = results.metrics;
-  
-  // Actualizar resumen
-  const minutes = Math.floor(results.duration / 60000);
-  const seconds = Math.floor((results.duration % 60000) / 1000);
-  document.getElementById('totalTime').textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-  document.getElementById('finalScore').textContent = results.finalScore;
-  
-  // Determinar nivel de habilidad
-  let skillLevel = "Principiante";
-  if (results.finalScore >= 80) skillLevel = "Experto";
-  else if (results.finalScore >= 60) skillLevel = "Intermedio";
-  document.getElementById('skillLevel').textContent = skillLevel;
-  
-  // Actualizar métricas detalladas
-  updateMetric('angle', metrics.angle.score, getAngleFeedback(metrics.angle.score));
-  updateMetric('stability', metrics.stability.score, getStabilityFeedback(metrics.stability.score));
-  updateMetric('speed', metrics.speed.score, getSpeedFeedback(metrics.speed.score, metrics.speed.consistency));
-  updateMetric('distance', metrics.distance.score, getDistanceFeedback(metrics.distance.score, metrics.distance.average));
-  
-  // Actualizar recomendaciones
-  const recommendationsList = document.getElementById('recommendationsList');
-  recommendationsList.innerHTML = '';
-  
-  evaluationSession.recommendations.forEach(rec => {
-    const li = document.createElement('li');
-    li.textContent = rec;
-    recommendationsList.appendChild(li);
-  });
-  
-  // Mostrar modal
-  document.getElementById('resultsModal').style.display = 'flex';
-}
-
-// Actualizar una métrica en el modal
-function updateMetric(metricName, score, feedback) {
-  document.getElementById(`${metricName}Score`).textContent = `${score}%`;
-  document.getElementById(`${metricName}Bar`).style.width = `${score}%`;
-  document.getElementById(`${metricName}Feedback`).textContent = feedback;
-}
-
-// Obtener feedback para ángulo
-function getAngleFeedback(score) {
-  if (score >= 90) return "Ángulo perfectamente mantenido en rango óptimo";
-  if (score >= 70) return "Buen control del ángulo, mejora la consistencia";
-  if (score >= 50) return "Necesita práctica para mantener ángulo constante";
-  return "Requiere mucha práctica en control de ángulo";
-}
-
-// Obtener feedback para estabilidad
-function getStabilityFeedback(score) {
-  if (score >= 85) return "Muy estable, mano firme";
-  if (score >= 65) return "Estabilidad aceptable, puede mejorar";
-  if (score >= 45) return "Inestabilidad notable, practica soporte";
-  return "Muy inestable, necesita entrenamiento básico";
-}
-
-// Obtener feedback para velocidad
-function getSpeedFeedback(score, consistency) {
-  if (score >= 80) return `Velocidad constante (${consistency}% consistencia)`;
-  if (score >= 60) return `Velocidad moderada, variabilidad aceptable`;
-  return "Velocidad muy variable, practica movimientos suaves";
-}
-
-// Obtener feedback para distancia
-function getDistanceFeedback(score, avgDistance) {
-  if (score >= 80) return `Distancia óptima (${avgDistance.toFixed(1)} cm promedio)`;
-  if (score >= 60) return `Distancia aceptable (${avgDistance.toFixed(1)} cm)`;
-  return `Distancia inadecuada (${avgDistance.toFixed(1)} cm), ajusta posición`;
-}
-
-// Ocultar resultados
-function hideResults() {
-  document.getElementById('resultsModal').style.display = 'none';
-}
-
-// Iniciar nueva sesión
-function startNewSession() {
-  hideResults();
-  
-  // Reiniciar evaluación
-  evaluationSession = {
-    active: false,
-    startTime: null,
-    duration: 0,
-    dataPoints: [],
-    metrics: {
-      angleScores: [],
-      stabilityScores: [],
-      speedValues: [],
-      distanceValues: []
-    }
-  };
-  
-  // Actualizar UI
-  document.getElementById('startEvalBtn').style.display = 'block';
-  document.getElementById('stopEvalBtn').style.display = 'none';
-  document.getElementById('sessionTimer').textContent = '00:00';
-  document.getElementById('evalTime').textContent = '0s';
-  document.getElementById('evalScore').textContent = '0';
-  document.getElementById('evalScore').style.color = 'white';
-  
-  console.log("🔄 Nueva sesión preparada");
-}
-
-// Compartir resultados
-function shareResults() {
-  if (!evaluationSession.results) return;
-  
-  const results = evaluationSession.results;
-  const text = `🏆 Resultados Simulador Soldadura:
-⏱️ Duración: ${Math.floor(results.duration / 1000)}s
-📊 Puntaje: ${results.finalScore}/100
-🎯 Ángulo: ${results.metrics.angle.score}%
-🤲 Estabilidad: ${results.metrics.stability.score}%
-🚀 Velocidad: ${results.metrics.speed.score}%
-📏 Distancia: ${results.metrics.distance.score}%
-
-#Soldadura #Simulador #Entrenamiento`;
-  
-  if (navigator.share) {
-    navigator.share({
-      title: 'Mis Resultados de Soldadura',
-      text: text,
-      url: window.location.href
-    }).catch(console.error);
-  } else {
-    // Copiar al portapapeles
-    navigator.clipboard.writeText(text).then(() => {
-      alert("Resultados copiados al portapapeles");
-    }).catch(() => {
-      prompt("Copia estos resultados:", text);
-    });
-  }
-}
-
-// ============================================
-// MODIFICACIONES AL CÓDIGO EXISTENTE
-// ============================================
-
-// En la función startApp(), después de mostrar la aplicación, agregar:
-function startApp() {
-  // ... código existente ...
-  
-  // Después de: appContainer.style.display = 'block';
-  // Agregar:
-  initEvaluationSystem();
-  
-  // ... resto del código existente ...
-}
-
-// En processFrame(), después de updateStability(), agregar:
-function processFrame() {
-  // ... código existente ...
-  
-  // Después de: updateStability();
-  // Agregar:
-  if (evaluationSession.active) {
-    recordEvaluationData();
-  }
-  
-  // ... resto del código existente ...
-}
-
-// En handleDeviceOrientation(), modificar para que también registre para evaluación:
-function handleDeviceOrientation(event) {
-  // ... código existente ...
-  
-  // Al final de la función, después de checkOptimalAngle(deviceAngle);
-  // Agregar:
-  if (evaluationSession.active) {
-    // Los datos se registran automáticamente en processFrame()
-  }
-}
