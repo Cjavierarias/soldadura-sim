@@ -8,6 +8,7 @@ let cvReady = false;
 let isProcessing = false;
 let zeroAngleCalibrated = false;
 let calibrationValue = 0;
+let panelsVisible = true;
 
 // Configuración de soldadura
 let weldConfig = {
@@ -86,10 +87,13 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('material').addEventListener('change', updateWeldConfig);
   document.getElementById('soundToggle').addEventListener('click', toggleSound);
   document.getElementById('calibrateBtn').addEventListener('click', calibrateZeroAngle);
-  document.getElementById('helpBtn').addEventListener('click', showHelp);
+  document.getElementById('togglePanelsBtn').addEventListener('click', toggleAllPanels);
   
   // Inicializar sistema de evaluación
   initEvaluationSystem();
+  
+  // Inicializar paneles minimizables
+  initMinimizablePanels();
   
   // Verificar sensores del dispositivo
   checkDeviceSensors();
@@ -102,6 +106,63 @@ function onOpenCvReady() {
   loadStatus.textContent = "OpenCV cargado correctamente";
   loading.style.display = 'none';
   startBtn.style.display = 'block';
+}
+
+// Inicializar paneles minimizables
+function initMinimizablePanels() {
+  // Panel de controles
+  document.getElementById('controlsHeader').addEventListener('click', function() {
+    const panel = document.getElementById('controlsPanel');
+    const btn = document.getElementById('minimizeControls');
+    panel.classList.toggle('minimized');
+    btn.textContent = panel.classList.contains('minimized') ? '+' : '−';
+  });
+  
+  document.getElementById('minimizeControls').addEventListener('click', function(e) {
+    e.stopPropagation();
+    const panel = document.getElementById('controlsPanel');
+    panel.classList.toggle('minimized');
+    this.textContent = panel.classList.contains('minimized') ? '+' : '−';
+  });
+  
+  // Panel de evaluación
+  document.getElementById('evalHeader').addEventListener('click', function() {
+    const panel = document.getElementById('evaluationPanel');
+    const btn = document.getElementById('minimizeEval');
+    panel.classList.toggle('minimized');
+    btn.textContent = panel.classList.contains('minimized') ? '+' : '−';
+  });
+  
+  document.getElementById('minimizeEval').addEventListener('click', function(e) {
+    e.stopPropagation();
+    const panel = document.getElementById('evaluationPanel');
+    panel.classList.toggle('minimized');
+    this.textContent = panel.classList.contains('minimized') ? '+' : '−';
+  });
+}
+
+// Alternar visibilidad de todos los paneles
+function toggleAllPanels() {
+  panelsVisible = !panelsVisible;
+  const btn = document.getElementById('togglePanelsBtn');
+  
+  if (panelsVisible) {
+    // Mostrar todos los paneles
+    document.getElementById('controlsPanel').style.display = 'block';
+    document.getElementById('evaluationPanel').style.display = 'block';
+    document.getElementById('info').style.display = 'block';
+    document.getElementById('angleIndicator').style.display = 'flex';
+    btn.innerHTML = '📱 Mostrar/Ocultar Paneles';
+    markerStatusEl.innerHTML = 'Paneles visibles';
+  } else {
+    // Ocultar todos los paneles
+    document.getElementById('controlsPanel').style.display = 'none';
+    document.getElementById('evaluationPanel').style.display = 'none';
+    document.getElementById('info').style.display = 'none';
+    document.getElementById('angleIndicator').style.display = 'none';
+    btn.innerHTML = '📱 Mostrar Paneles';
+    markerStatusEl.innerHTML = 'Paneles ocultos - enfoque en soldadura';
+  }
 }
 
 // Verificar sensores del dispositivo
@@ -119,7 +180,6 @@ function checkDeviceSensors() {
 // Manejar orientación del dispositivo
 function handleDeviceOrientation(event) {
   if (event.beta !== null) {
-    // beta: inclinación frontal (-180 a 180)
     let rawAngle = Math.abs(event.beta);
     
     // Limitar a 0-90 grados
@@ -156,13 +216,13 @@ function updateAngleDisplay(angle) {
   
   if (roundedAngle >= optimal.min && roundedAngle <= optimal.max) {
     currentAngleEl.className = 'info-value good';
-    markerStatusEl.innerHTML = '✅ Ángulo óptimo';
+    if (!evaluationSession.active) {
+      markerStatusEl.innerHTML = '✅ Ángulo óptimo';
+    }
   } else if (roundedAngle < optimal.min) {
     currentAngleEl.className = 'info-value warning';
-    markerStatusEl.innerHTML = '⚠️ Ángulo bajo';
   } else {
     currentAngleEl.className = 'info-value error';
-    markerStatusEl.innerHTML = '⚠️ Ángulo alto';
   }
 }
 
@@ -176,23 +236,24 @@ function checkOptimalAngle(angle) {
   const roundedAngle = Math.round(angle);
   
   if (roundedAngle < optimal.min) {
-    // Ángulo demasiado bajo - sonido AGUDO
-    playAngleSound('low');
+    // Ángulo demasiado bajo - sonido AGUDO (pitido alto)
+    playAngleSound('high');
     lastSoundTime = Date.now();
   } else if (roundedAngle > optimal.max) {
-    // Ángulo demasiado alto - sonido GRAVE
-    playAngleSound('high');
+    // Ángulo demasiado alto - sonido GRAVE (pitido bajo)
+    playAngleSound('low');
     lastSoundTime = Date.now();
   }
 }
 
-// Reproducir sonido según ángulo
+// Reproducir sonido según ángulo - MEJORADO
 function playAngleSound(type) {
   if (!weldConfig.soundEnabled) return;
   
-  const sound = type === 'low' ? document.getElementById('lowAngleSound') : document.getElementById('highAngleSound');
+  const sound = type === 'high' ? document.getElementById('beepHigh') : document.getElementById('beepLow');
   if (sound) {
     sound.currentTime = 0;
+    sound.volume = 0.5; // Volumen moderado
     sound.play().catch(e => console.log("Error reproduciendo sonido:", e));
   }
 }
@@ -213,6 +274,7 @@ function calibrateZeroAngle() {
       const sound = document.getElementById('goodSound');
       if (sound) {
         sound.currentTime = 0;
+        sound.volume = 0.3;
         sound.play();
       }
     }
@@ -252,24 +314,6 @@ function updateWeldConfig() {
   // Actualizar display de ángulo óptimo
   const optimal = weldConfig.optimalAngle[weldConfig.type];
   markerStatusEl.innerHTML = `🎯 Ángulo óptimo: ${optimal.min}° - ${optimal.max}°`;
-}
-
-// Mostrar ayuda
-function showHelp() {
-  alert("SIMULADOR DE SOLDADURA\n\n" +
-        "INSTRUCCIONES:\n" +
-        "1. Imprime el marcador ARUCO\n" +
-        "2. Colócalo en la superficie\n" +
-        "3. Sostén el celular como antorcha\n" +
-        "4. Calibra el ángulo cero\n" +
-        "5. Mantén el ángulo en rango óptimo\n\n" +
-        "RANGOS ÓPTIMOS:\n" +
-        "• MIG/MAG: 15°-25°\n" +
-        "• TIG: 10°-20°\n" +
-        "• Electrodo: 5°-15°\n\n" +
-        "SONIDOS:\n" +
-        "• Agudo: ángulo demasiado bajo\n" +
-        "• Grave: ángulo demasiado alto");
 }
 
 // ============================================
@@ -319,9 +363,6 @@ async function startApp() {
     loading.style.display = 'none';
     appContainer.style.display = 'block';
     
-    // Mostrar panel de evaluación
-    document.getElementById('evaluationPanel').style.display = 'block';
-    
     // Iniciar procesamiento
     isProcessing = true;
     processFrame();
@@ -352,12 +393,6 @@ function processFrame() {
     // Si no hay sensores, usar datos simulados
     if (!isDeviceOrientationSupported) {
       simulateData();
-    }
-    
-    // Procesar con OpenCV si está listo
-    if (cvReady && cv.Mat) {
-      // Simular procesamiento de OpenCV
-      simulateMarkerDetection();
     }
     
     // Dibujar guías visuales
@@ -410,21 +445,6 @@ function simulateData() {
   // Guardar para siguiente frame
   prevDistance = simulatedDistance;
   prevTime = now;
-  
-  markerStatusEl.innerHTML = '🎯 Marcador detectado (simulado)';
-}
-
-// Simular detección de marcador
-function simulateMarkerDetection() {
-  // Esta función simula el procesamiento de OpenCV
-  try {
-    // Solo para mantener la compatibilidad
-    if (cv && cv.Mat) {
-      // Simular procesamiento básico
-    }
-  } catch (error) {
-    console.log("Simulación OpenCV:", error);
-  }
 }
 
 // Dibujar guías visuales
@@ -559,7 +579,7 @@ function startEvaluation() {
   // Actualizar UI
   document.getElementById('startEvalBtn').style.display = 'none';
   document.getElementById('stopEvalBtn').style.display = 'block';
-  markerStatusEl.innerHTML = '📊 Evaluación iniciada';
+  markerStatusEl.innerHTML = '📊 Evaluación en curso...';
   
   console.log("✅ Evaluación iniciada");
   
@@ -596,7 +616,6 @@ function updateEvaluationTimer() {
   // Formatear tiempo
   const timeStr = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
   document.getElementById('sessionTimer').textContent = timeStr;
-  document.getElementById('evalTime').textContent = `${Math.floor(elapsed / 1000)}s`;
   
   // Actualizar cada segundo
   setTimeout(updateEvaluationTimer, 1000);
@@ -739,11 +758,11 @@ function calculateSpeedScore(speedValues) {
   
   // Velocidad ideal: 5-15 cm/s
   if (avgSpeed >= 5 && avgSpeed <= 15) {
-    return 85 + (Math.random() * 10); // 85-95%
+    return 85 + (Math.random() * 10);
   } else if (avgSpeed >= 3 && avgSpeed <= 20) {
-    return 70 + (Math.random() * 10); // 70-80%
+    return 70 + (Math.random() * 10);
   } else {
-    return 40 + (Math.random() * 20); // 40-60%
+    return 40 + (Math.random() * 20);
   }
 }
 
@@ -897,7 +916,6 @@ function startNewSession() {
   document.getElementById('startEvalBtn').style.display = 'block';
   document.getElementById('stopEvalBtn').style.display = 'none';
   document.getElementById('sessionTimer').textContent = '00:00';
-  document.getElementById('evalTime').textContent = '0s';
   document.getElementById('evalScore').textContent = '0';
   document.getElementById('evalScore').style.color = 'white';
   
@@ -915,7 +933,9 @@ function shareResults() {
 🎯 Ángulo: ${results.metrics.angle.score}%
 🤲 Estabilidad: ${results.metrics.stability.score}%
 🚀 Velocidad: ${results.metrics.speed.score}%
-📏 Distancia: ${results.metrics.distance.score}%`;
+📏 Distancia: ${results.metrics.distance.score}%
+
+#Soldadura #Simulador #Entrenamiento`;
   
   if (navigator.share) {
     navigator.share({
