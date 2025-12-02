@@ -92,35 +92,100 @@ video, canvas {
 }
 
 canvas {
-  z-index: 2;
+  z-index: 1;
 }
 
-/* Panel de controles */
-#controls {
+/* =========================================== */
+/* PANELES MINIMIZABLES */
+/* =========================================== */
+
+.minimizable-panel {
   position: absolute;
+  z-index: 10;
+  background: rgba(0, 20, 40, 0.9);
+  border-radius: 12px;
+  backdrop-filter: blur(10px);
+  border: 2px solid rgba(0, 200, 255, 0.3);
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.4);
+  transition: all 0.3s ease;
+  overflow: hidden;
+  max-height: 400px;
+}
+
+.minimizable-panel.minimized {
+  max-height: 50px;
+}
+
+.minimizable-panel.minimized .panel-content {
+  display: none;
+}
+
+#controlsPanel {
   top: 20px;
   left: 20px;
   right: 20px;
-  z-index: 10;
+  max-width: 350px;
+}
+
+#evaluationPanel {
+  top: 20px;
+  right: 20px;
+  width: 280px;
+}
+
+.panel-header {
   display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  background: rgba(0, 0, 0, 0.7);
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 15px;
+  background: rgba(0, 30, 60, 0.8);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+}
+
+.panel-header h3 {
+  margin: 0;
+  color: #8cf;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.minimize-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 20px;
+  transition: all 0.3s;
+}
+
+.minimize-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: scale(1.1);
+}
+
+.panel-content {
   padding: 15px;
-  border-radius: 15px;
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(0, 200, 255, 0.3);
+  transition: all 0.3s ease;
 }
 
 .control-group {
-  flex: 1;
-  min-width: 150px;
+  margin-bottom: 12px;
 }
 
 .control-title {
-  font-size: 14px;
+  font-size: 13px;
   color: #8cf;
   margin-bottom: 5px;
+  font-weight: 500;
 }
 
 select, button {
@@ -131,7 +196,6 @@ select, button {
   background: rgba(0, 20, 40, 0.8);
   color: white;
   font-size: 14px;
-  margin-bottom: 10px;
   cursor: pointer;
   transition: all 0.3s;
 }
@@ -146,81 +210,183 @@ button.active {
   border-color: rgba(0, 255, 200, 0.5);
 }
 
-/* Panel de información */
+/* =========================================== */
+/* PANEL DE EVALUACIÓN MEJORADO */
+/* =========================================== */
+
+.evaluation-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 15px;
+}
+
+.timer-display, .score-display {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.timer-label, .score-label {
+  font-size: 13px;
+  color: #8cf;
+}
+
+.timer-value {
+  font-family: 'Courier New', monospace;
+  font-size: 18px;
+  font-weight: bold;
+  color: #0f0;
+  text-shadow: 0 0 8px rgba(0, 255, 0, 0.5);
+}
+
+.score-value {
+  font-size: 20px;
+  font-weight: bold;
+  color: white;
+}
+
+.evaluation-controls {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.eval-btn {
+  flex: 1;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: none;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.3s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 80px;
+}
+
+.eval-btn.start {
+  background: linear-gradient(135deg, #0a6, #0fc);
+}
+
+.eval-btn.stop {
+  background: linear-gradient(135deg, #f06, #f40);
+}
+
+.eval-btn.results {
+  background: linear-gradient(135deg, #666, #888);
+}
+
+.eval-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* =========================================== */
+/* INDICADOR DE ÁNGULO MEJORADO */
+/* =========================================== */
+
+#angleIndicator {
+  position: absolute;
+  top: 50%;
+  right: 20px;
+  transform: translateY(-50%);
+  width: 100px;
+  height: 100px;
+  z-index: 5;
+  background: rgba(0, 0, 0, 0.7);
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.2);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+}
+
+.angle-value {
+  font-size: 24px;
+  font-weight: bold;
+  color: white;
+  text-shadow: 0 0 10px rgba(0, 200, 255, 0.7);
+}
+
+.angle-label {
+  font-size: 12px;
+  color: #8cf;
+  margin-top: 5px;
+}
+
+/* =========================================== */
+/* PANEL DE INFORMACIÓN MEJORADO */
+/* =========================================== */
+
 #info {
   position: absolute;
   bottom: 20px;
   left: 20px;
   right: 20px;
   background: rgba(0, 0, 0, 0.8);
-  padding: 20px;
+  padding: 15px;
   border-radius: 15px;
   z-index: 3;
   backdrop-filter: blur(10px);
   border: 1px solid rgba(0, 255, 0, 0.3);
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 15px;
   gap: 15px;
 }
 
-.info-card {
+.info-item {
+  flex: 1;
   background: rgba(0, 20, 40, 0.6);
-  padding: 15px;
+  padding: 12px;
   border-radius: 10px;
   border-left: 4px solid #0af;
+  min-width: 120px;
 }
 
-.info-title {
-  font-size: 14px;
+.info-label {
+  font-size: 13px;
   color: #8cf;
-  margin-bottom: 8px;
+  margin-bottom: 5px;
 }
 
 .info-value {
-  font-size: 24px;
+  font-size: 22px;
   font-weight: bold;
   color: white;
-  text-shadow: 0 0 10px rgba(0, 200, 255, 0.5);
+  text-shadow: 0 0 8px rgba(0, 200, 255, 0.5);
 }
 
 .info-status {
   color: #ff0;
   font-size: 14px;
-  margin-top: 10px;
   text-align: center;
-  grid-column: 1 / -1;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .good { color: #0f0 !important; }
 .warning { color: #ff0 !important; }
 .error { color: #f00 !important; }
 
-/* Indicador de ángulo */
-#angleIndicator {
-  position: absolute;
-  top: 50%;
-  right: 20px;
-  transform: translateY(-50%);
-  width: 120px;
-  height: 120px;
-  z-index: 10;
-  background: rgba(0, 0, 0, 0.7);
-  border-radius: 50%;
-  border: 3px solid rgba(255, 255, 255, 0.2);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  backdrop-filter: blur(10px);
-}
+/* =========================================== */
+/* BOTONES DE ACCIÓN */
+/* =========================================== */
 
-.angle-value {
-  font-size: 28px;
-  font-weight: bold;
-  color: white;
-  text-shadow: 0 0 10px rgba(0, 200, 255, 0.7);
-}
-
-/* Botones de acción */
 #actionButtons {
   position: absolute;
   bottom: 120px;
@@ -233,10 +399,10 @@ button.active {
 
 .action-btn {
   flex: 1;
-  padding: 15px;
+  padding: 14px;
   border-radius: 12px;
   border: none;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: bold;
   cursor: pointer;
   transition: all 0.3s;
@@ -260,98 +426,9 @@ button.active {
 }
 
 /* =========================================== */
-/* ESTILOS PARA EL SISTEMA DE EVALUACIÓN */
+/* MODAL DE RESULTADOS */
 /* =========================================== */
 
-.evaluation-panel {
-  position: absolute;
-  top: 180px;
-  left: 20px;
-  right: 20px;
-  z-index: 10;
-  background: rgba(0, 20, 40, 0.85);
-  padding: 15px;
-  border-radius: 15px;
-  backdrop-filter: blur(10px);
-  border: 2px solid rgba(0, 200, 255, 0.3);
-  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
-  display: none;
-}
-
-.evaluation-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 15px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-}
-
-.evaluation-header h3 {
-  margin: 0;
-  color: #8cf;
-  font-size: 16px;
-}
-
-.timer {
-  background: rgba(0, 0, 0, 0.5);
-  padding: 5px 15px;
-  border-radius: 20px;
-  font-weight: bold;
-  color: #0f0;
-  font-family: monospace;
-  font-size: 18px;
-  border: 1px solid rgba(0, 255, 0, 0.3);
-}
-
-.evaluation-stats {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-}
-
-.stat-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  flex: 1;
-}
-
-.stat-label {
-  font-size: 12px;
-  color: #8cf;
-  margin-bottom: 5px;
-}
-
-.stat-value {
-  font-size: 20px;
-  font-weight: bold;
-  color: white;
-}
-
-.eval-btn {
-  padding: 10px 20px;
-  background: linear-gradient(135deg, #0a6, #0fc);
-  color: white;
-  border: none;
-  border-radius: 10px;
-  font-weight: bold;
-  cursor: pointer;
-  transition: all 0.3s;
-  flex: 2;
-}
-
-.eval-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 5px 15px rgba(0, 255, 200, 0.3);
-}
-
-.eval-btn.stop {
-  background: linear-gradient(135deg, #f06, #f40);
-}
-
-/* Modal de resultados */
 .modal {
   display: none;
   position: fixed;
@@ -533,44 +610,57 @@ button.active {
   font-size: 16px;
 }
 
-/* Media queries */
+/* =========================================== */
+/* MEDIA QUERIES PARA MÓVILES */
+/* =========================================== */
+
 @media (max-width: 768px) {
-  #controls {
-    flex-direction: column;
-    gap: 5px;
+  #controlsPanel {
+    top: 10px;
+    left: 10px;
+    right: 10px;
+    max-width: none;
   }
   
-  #info {
-    grid-template-columns: 1fr 1fr;
-    bottom: 100px;
-  }
-  
-  #actionButtons {
-    flex-direction: column;
-    bottom: 20px;
+  #evaluationPanel {
+    top: 80px;
+    right: 10px;
+    width: calc(100% - 20px);
+    max-width: none;
   }
   
   #angleIndicator {
+    top: 140px;
+    right: 10px;
     width: 80px;
     height: 80px;
-    top: 30%;
   }
   
   .angle-value {
     font-size: 20px;
   }
   
-  .evaluation-panel {
-    top: 150px;
-  }
-  
-  .evaluation-stats {
+  .info-row {
     flex-direction: column;
-    gap: 15px;
+    gap: 10px;
   }
   
-  .stat-item {
-    width: 100%;
+  .info-item {
+    min-width: 0;
+  }
+  
+  #actionButtons {
+    flex-direction: column;
+    bottom: 10px;
+    gap: 8px;
+  }
+  
+  .action-btn {
+    padding: 12px;
+  }
+  
+  .evaluation-controls {
+    flex-direction: column;
   }
   
   .eval-btn {
@@ -583,5 +673,32 @@ button.active {
   
   .results-actions {
     flex-direction: column;
+  }
+}
+
+@media (max-width: 480px) {
+  .minimizable-panel {
+    max-width: 100%;
+  }
+  
+  #controlsPanel.minimized,
+  #evaluationPanel.minimized {
+    width: auto;
+  }
+  
+  .panel-header h3 {
+    font-size: 14px;
+  }
+  
+  .info-value {
+    font-size: 20px;
+  }
+  
+  .timer-value {
+    font-size: 16px;
+  }
+  
+  .score-value {
+    font-size: 18px;
   }
 }
