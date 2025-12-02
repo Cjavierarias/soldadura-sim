@@ -24,19 +24,34 @@ let weldConfig = {
     mig: { min: 15, max: 25 },
     tig: { min: 8, max: 15 },
     electrodo: { min: 5, max: 10 }
+  },
+  optimalSpeed: {
+    mig: { min: 5, max: 15 }, // cm/s
+    tig: { min: 3, max: 10 },
+    electrodo: { min: 0.3, max: 0.8 } // más lento para electrodo
+  },
+  optimalApproachSpeed: {
+    electrodo: { min: -0.5, max: -0.1 } // negativa porque debe acercarse
   }
 };
 
-// Variables de seguimiento
+// Variables de seguimiento de posición
 let prevTime = 0;
 let prevDistance = 20; // Distancia inicial en cm
-let prevPositions = [];
+let prevPositions = []; // Para seguimiento de movimiento
+let pathHistory = []; // Para calcular rectitud
 let angleHistory = [];
 let stabilityScore = 0;
+let straightnessScore = 0;
 let lastMarkerTime = null;
 let markerVisible = false;
-let electrodoConsumption = 0; // Para simular consumo de electrodo
-let electrodoStartLength = 30; // Longitud inicial del electrodo en cm
+let electrodoConsumption = 0;
+let electrodoStartLength = 30;
+
+// Para cálculo de velocidad
+let lastPosition = { x: 0, y: 0, distance: 20 };
+let positionHistory = [];
+const MAX_HISTORY = 50;
 
 // Elementos DOM
 let startBtn = null;
@@ -66,6 +81,8 @@ let evaluationSession = {
     angleScores: [],
     stabilityScores: [],
     speedValues: [],
+    approachSpeedValues: [],
+    straightnessValues: [],
     distanceValues: [],
     distanceConsistency: []
   }
@@ -251,7 +268,7 @@ function updateAngleDisplay(angle) {
   }
 }
 
-// Verificar si el ángulo está en rango óptimo - CORREGIDO SONIDOS
+// Verificar si el ángulo está en rango óptimo
 function checkOptimalAngle(angle) {
   if (!weldConfig.soundEnabled || Date.now() - lastSoundTime < SOUND_COOLDOWN) {
     return;
@@ -261,29 +278,28 @@ function checkOptimalAngle(angle) {
   const roundedAngle = Math.round(angle);
   
   if (roundedAngle < optimal.min) {
-    // Ángulo demasiado bajo - sonido AGUDO (pitido alto) - CORREGIDO
+    // Ángulo demasiado bajo - sonido AGUDO (pitido alto)
     playAngleSound('high');
     lastSoundTime = Date.now();
     markerStatusEl.innerHTML = '⚠️ Ángulo demasiado bajo (sonido agudo)';
   } else if (roundedAngle > optimal.max) {
-    // Ángulo demasiado alto - sonido GRAVE (pitido bajo) - CORREGIDO
+    // Ángulo demasiado alto - sonido GRAVE (pitido bajo)
     playAngleSound('low');
     lastSoundTime = Date.now();
     markerStatusEl.innerHTML = '⚠️ Ángulo demasiado alto (sonido grave)';
   }
 }
 
-// Reproducir sonido según ángulo - CORREGIDO
+// Reproducir sonido según ángulo
 function playAngleSound(type) {
   if (!weldConfig.soundEnabled) return;
   
   const sound = type === 'high' ? document.getElementById('beepHigh') : document.getElementById('beepLow');
   if (sound) {
     sound.currentTime = 0;
-    sound.volume = 0.4; // Volumen moderado
+    sound.volume = 0.4;
     sound.play().catch(e => {
       console.log("Error reproduciendo sonido:", e);
-      // Fallback: intentar cargar el sonido de nuevo
       sound.load();
       setTimeout(() => {
         sound.play().catch(console.error);
@@ -348,10 +364,15 @@ function updateWeldConfig() {
   // Actualizar display de ángulo óptimo
   const optimal = weldConfig.optimalAngle[weldConfig.type];
   markerStatusEl.innerHTML = `🎯 Ángulo óptimo: ${optimal.min}° - ${optimal.max}°`;
+  
+  // Reiniciar electrodo si cambiamos de tipo
+  if (weldConfig.type !== 'electrodo') {
+    electrodoConsumption = 0;
+  }
 }
 
 // ============================================
-// FUNCIONES PRINCIPALES DE LA APLICACIÓN
+// FUNCIONES PRINCIPALES MEJORADAS
 // ============================================
 
 // Iniciar la aplicación
@@ -380,6 +401,15 @@ async function startApp() {
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
         console.log("Canvas size:", canvas.width, "x", canvas.height);
+        
+        // Inicializar posición
+        lastPosition = {
+          x: canvas.width / 2,
+          y: canvas.height / 2,
+          distance: 20,
+          time: Date.now()
+        };
+        
         resolve();
       };
     });
@@ -419,7 +449,7 @@ async function startApp() {
   }
 }
 
-// Procesar cada frame - CORREGIDO
+// Procesar cada frame
 function processFrame() {
   if (!isProcessing) return;
   
@@ -432,14 +462,16 @@ function processFrame() {
       simulateData();
     }
     
-    // Actualizar datos de distancia y velocidad
-    updateDistanceAndSpeed();
+    // Actualizar datos de distancia, velocidad y posición
+    updatePositionAndVelocities();
     
-    // Dibujar guías visuales
+    // Dibujar guías visuales y trayectoria
     drawVisualGuides();
+    drawTrajectory();
     
-    // Actualizar estabilidad
+    // Actualizar estabilidad y rectitud
     updateStability();
+    updateStraightness();
     
     // Registrar datos para evaluación si está activa
     if (evaluationSession.active) {
@@ -469,7 +501,7 @@ function simulateData() {
   
   // Simular detección de marcador
   const time = now / 1000;
-  markerVisible = Math.sin(time) > -0.5; // 75% del tiempo visible
+  markerVisible = Math.sin(time) > -0.5;
   
   if (markerVisible) {
     markerStatusEl.innerHTML = '🎯 Marcador detectado';
@@ -481,8 +513,8 @@ function simulateData() {
   }
 }
 
-// Actualizar distancia y velocidad - CORREGIDO
-function updateDistanceAndSpeed() {
+// Actualizar posición y calcular velocidades - SISTEMA MEJORADO
+function updatePositionAndVelocities() {
   const now = Date.now();
   
   // Solo actualizar si ha pasado suficiente tiempo
@@ -490,69 +522,207 @@ function updateDistanceAndSpeed() {
     return;
   }
   
-  // Calcular distancia basada en tipo de soldadura
-  let currentDistance = 0;
+  // 1. CALCULAR DISTANCIA (simulada para demo)
+  let currentDistance = calculateCurrentDistance(now);
+  
+  // 2. CALCULAR POSICIÓN (simulada para demo)
+  // En una implementación real, esto vendría de OpenCV/tracking
+  const currentPosition = calculateCurrentPosition(now, currentDistance);
+  
+  // 3. CALCULAR VELOCIDAD DE TRASLACIÓN (movimiento paralelo al plano)
+  let translationSpeed = 0;
+  if (positionHistory.length > 1) {
+    // Calcular distancia recorrida en el plano XY
+    const totalDistance = calculatePlaneDistance(positionHistory);
+    const timeElapsed = (positionHistory[positionHistory.length - 1].time - positionHistory[0].time) / 1000;
+    translationSpeed = timeElapsed > 0 ? totalDistance / timeElapsed : 0;
+  }
+  
+  // 4. CALCULAR VELOCIDAD DE APROXIMACIÓN (cambio de distancia)
+  let approachSpeed = 0;
+  if (prevTime > 0 && prevDistance !== null) {
+    const dt = (now - prevTime) / 1000;
+    const distanceChange = currentDistance - prevDistance;
+    approachSpeed = dt > 0 ? distanceChange / dt : 0;
+  }
+  
+  // 5. ACTUALIZAR UI
+  updateDisplayValues(currentDistance, translationSpeed, approachSpeed);
+  
+  // 6. GUARDAR DATOS PARA SIGUIENTE FRAME
+  savePositionData(now, currentPosition, currentDistance, translationSpeed, approachSpeed);
+}
+
+// Calcular distancia actual (simulación)
+function calculateCurrentDistance(now) {
   const optimalDist = weldConfig.optimalDistance[weldConfig.type];
   
   if (weldConfig.type === 'electrodo') {
     // Para electrodo: la distancia debe ir disminuyendo
     const timeElapsed = evaluationSession.active ? 
       (now - evaluationSession.startTime) / 1000 : 
-      (now % 60000) / 1000; // Usar tiempo cíclico si no hay evaluación
+      (now % 60000) / 1000;
     
-    // El electrodo se consume a 0.5 cm por segundo
-    electrodoConsumption = Math.min(electrodoStartLength, timeElapsed * 0.5);
-    currentDistance = optimalDist.max - (electrodoConsumption * 0.8);
-    currentDistance = Math.max(optimalDist.min, currentDistance);
+    // El electrodo se consume a 0.3 cm por segundo
+    electrodoConsumption = Math.min(electrodoStartLength, timeElapsed * 0.3);
+    let distance = optimalDist.max - (electrodoConsumption * 0.6);
+    distance = Math.max(optimalDist.min, distance);
     
     // Si el electrodo se consumió completamente, reiniciar
-    if (electrodoConsumption >= electrodoStartLength) {
+    if (electrodoConsumption >= electrodoStartLength && !evaluationSession.active) {
       electrodoConsumption = 0;
     }
+    
+    return distance;
   } else {
     // Para MIG/TIG: distancia más estable con pequeña variación
-    const timeVar = Math.sin(now / 2000) * 0.4 + 0.8;
-    currentDistance = (optimalDist.min + optimalDist.max) / 2 * timeVar;
-    currentDistance = Math.max(optimalDist.min, Math.min(optimalDist.max, currentDistance));
+    const timeVar = Math.sin(now / 2000) * 0.3 + 0.85;
+    let distance = (optimalDist.min + optimalDist.max) / 2 * timeVar;
+    return Math.max(optimalDist.min, Math.min(optimalDist.max, distance));
+  }
+}
+
+// Calcular posición actual (simulación para demo)
+function calculateCurrentPosition(now, distance) {
+  // En una implementación real, esto vendría del tracking del marcador
+  const centerX = canvas.width / 2;
+  const centerY = canvas.height / 2;
+  
+  // Simular movimiento en el plano
+  const time = now / 1000;
+  const amplitude = 50; // Píxeles de movimiento máximo
+  
+  // Patrón de movimiento para simular soldadura
+  let x, y;
+  
+  if (weldConfig.type === 'electrodo') {
+    // Electrodo: movimiento más lento y preciso
+    x = centerX + Math.sin(time * 0.5) * amplitude * 0.3;
+    y = centerY + Math.cos(time * 0.8) * amplitude * 0.2;
+  } else if (weldConfig.type === 'tig') {
+    // TIG: movimiento suave y controlado
+    x = centerX + Math.sin(time * 0.7) * amplitude * 0.4;
+    y = centerY + Math.cos(time * 0.5) * amplitude * 0.3;
+  } else {
+    // MIG: movimiento más amplio
+    x = centerX + Math.sin(time * 0.9) * amplitude * 0.5;
+    y = centerY + Math.cos(time * 0.6) * amplitude * 0.4;
   }
   
-  // Calcular velocidad basada en cambio de distancia
-  let currentSpeed = 0;
-  if (prevTime > 0) {
-    const dt = (now - prevTime) / 1000; // segundos
-    const distanceChange = Math.abs(currentDistance - prevDistance);
-    currentSpeed = dt > 0 ? distanceChange / dt : 0;
+  return {
+    x: x,
+    y: y,
+    distance: distance,
+    time: now
+  };
+}
+
+// Calcular distancia recorrida en el plano (píxeles convertidos a cm)
+function calculatePlaneDistance(positions) {
+  if (positions.length < 2) return 0;
+  
+  let totalDistance = 0;
+  for (let i = 1; i < positions.length; i++) {
+    const dx = positions[i].x - positions[i-1].x;
+    const dy = positions[i].y - positions[i-1].y;
+    const distancePixels = Math.sqrt(dx * dx + dy * dy);
     
-    // Limitar velocidad realista
-    currentSpeed = Math.min(currentSpeed, 30);
+    // Convertir píxeles a cm (aproximación: 100 píxeles = 10 cm)
+    totalDistance += distancePixels * 0.1;
   }
   
-  // Actualizar UI
-  document.getElementById('dist').textContent = currentDistance.toFixed(1) + ' cm';
-  document.getElementById('speed').textContent = currentSpeed.toFixed(1) + ' cm/s';
-  
-  // Actualizar color de distancia según rango óptimo
+  return totalDistance;
+}
+
+// Actualizar valores en pantalla
+function updateDisplayValues(distance, translationSpeed, approachSpeed) {
+  // Distancia
+  document.getElementById('dist').textContent = distance.toFixed(1) + ' cm';
   const distEl = document.getElementById('dist');
-  if (currentDistance >= optimalDist.min && currentDistance <= optimalDist.max) {
+  const optimalDist = weldConfig.optimalDistance[weldConfig.type];
+  
+  if (distance >= optimalDist.min && distance <= optimalDist.max) {
     distEl.className = 'info-value good';
-  } else if (currentDistance < optimalDist.min) {
+  } else if (distance < optimalDist.min) {
     distEl.className = 'info-value warning';
   } else {
     distEl.className = 'info-value error';
   }
   
-  // Actualizar color de velocidad
+  // Velocidad de traslación
+  document.getElementById('speed').textContent = Math.abs(translationSpeed).toFixed(1) + ' cm/s';
   const speedEl = document.getElementById('speed');
-  const optimalSpeed = weldConfig.type === 'electrodo' ? 0.5 : 5; // Electrodo más lento
-  if (currentSpeed >= optimalSpeed * 0.8 && currentSpeed <= optimalSpeed * 1.2) {
+  const optimalSpeed = weldConfig.optimalSpeed[weldConfig.type];
+  
+  if (translationSpeed >= optimalSpeed.min && translationSpeed <= optimalSpeed.max) {
     speedEl.className = 'info-value good';
-  } else {
+  } else if (translationSpeed < optimalSpeed.min) {
     speedEl.className = 'info-value warning';
+  } else {
+    speedEl.className = 'info-value error';
   }
   
-  // Guardar para siguiente frame
-  prevDistance = currentDistance;
+  // Velocidad de aproximación
+  const approachEl = document.getElementById('approachSpeed');
+  let approachDisplay = approachSpeed.toFixed(1);
+  
+  if (weldConfig.type === 'electrodo') {
+    // Para electrodo, mostrar como negativa cuando se acerca
+    const electrodoOptimal = weldConfig.optimalApproachSpeed.electrodo;
+    
+    if (approachSpeed <= electrodoOptimal.max && approachSpeed >= electrodoOptimal.min) {
+      approachEl.className = 'info-value good';
+      approachDisplay = approachSpeed.toFixed(1) + ' cm/s';
+    } else if (approachSpeed > 0) {
+      // Positiva = se aleja (malo para electrodo)
+      approachEl.className = 'info-value error';
+      approachDisplay = '+' + approachSpeed.toFixed(1) + ' cm/s';
+    } else {
+      // Negativa pero fuera de rango
+      approachEl.className = 'info-value warning';
+      approachDisplay = approachSpeed.toFixed(1) + ' cm/s';
+    }
+  } else {
+    // Para MIG/TIG, la aproximación debe ser mínima
+    if (Math.abs(approachSpeed) < 0.5) {
+      approachEl.className = 'info-value good';
+      approachDisplay = Math.abs(approachSpeed).toFixed(1) + ' cm/s';
+    } else {
+      approachEl.className = 'info-value warning';
+      approachDisplay = Math.abs(approachSpeed).toFixed(1) + ' cm/s';
+    }
+  }
+  
+  approachEl.textContent = approachDisplay;
+}
+
+// Guardar datos de posición
+function savePositionData(now, position, distance, translationSpeed, approachSpeed) {
+  // Guardar en historial
+  positionHistory.push({
+    x: position.x,
+    y: position.y,
+    distance: distance,
+    time: now,
+    translationSpeed: translationSpeed,
+    approachSpeed: approachSpeed
+  });
+  
+  // Limitar tamaño del historial
+  if (positionHistory.length > MAX_HISTORY) {
+    positionHistory.shift();
+  }
+  
+  // Guardar para cálculo de rectitud
+  pathHistory.push({ x: position.x, y: position.y });
+  if (pathHistory.length > 20) {
+    pathHistory.shift();
+  }
+  
+  // Actualizar valores previos
+  prevDistance = distance;
   prevTime = now;
+  lastPosition = position;
 }
 
 // Dibujar guías visuales
@@ -614,6 +784,35 @@ function drawVisualGuides() {
   }
 }
 
+// Dibujar trayectoria
+function drawTrajectory() {
+  if (pathHistory.length < 2) return;
+  
+  ctx.strokeStyle = 'rgba(255, 255, 0, 0.6)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  
+  // Mover al primer punto
+  ctx.moveTo(pathHistory[0].x, pathHistory[0].y);
+  
+  // Dibujar línea a través de todos los puntos
+  for (let i = 1; i < pathHistory.length; i++) {
+    ctx.lineTo(pathHistory[i].x, pathHistory[i].y);
+  }
+  
+  ctx.stroke();
+  
+  // Dibujar puntos de la trayectoria
+  ctx.fillStyle = 'rgba(255, 200, 0, 0.8)';
+  for (let i = 0; i < pathHistory.length; i++) {
+    // Puntos más grandes para puntos más recientes
+    const size = 3 + (i / pathHistory.length) * 3;
+    ctx.beginPath();
+    ctx.arc(pathHistory[i].x, pathHistory[i].y, size, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
 // Actualizar puntuación de estabilidad
 function updateStability() {
   const currentAngle = parseFloat(angleDisplay.textContent);
@@ -643,6 +842,91 @@ function updateStability() {
       }
     }
   }
+}
+
+// Calcular y actualizar rectitud de la trayectoria
+function updateStraightness() {
+  if (pathHistory.length < 3) {
+    straightnessScore = 0;
+    document.getElementById('straightness').textContent = '--%';
+    return;
+  }
+  
+  // Calcular desviación de la línea recta
+  const firstPoint = pathHistory[0];
+  const lastPoint = pathHistory[pathHistory.length - 1];
+  
+  // Calcular línea recta ideal entre primer y último punto
+  const dx = lastPoint.x - firstPoint.x;
+  const dy = lastPoint.y - firstPoint.y;
+  const distanceTotal = Math.sqrt(dx * dx + dy * dy);
+  
+  if (distanceTotal < 10) { // Muy poco movimiento
+    straightnessScore = 0;
+    document.getElementById('straightness').textContent = '--%';
+    return;
+  }
+  
+  let totalDeviation = 0;
+  for (let i = 1; i < pathHistory.length - 1; i++) {
+    const point = pathHistory[i];
+    
+    // Calcular distancia del punto a la línea recta
+    const deviation = distancePointToLine(point, firstPoint, lastPoint);
+    totalDeviation += deviation;
+  }
+  
+  const avgDeviation = totalDeviation / (pathHistory.length - 2);
+  
+  // Convertir a puntuación (menos desviación = más recto = mayor puntuación)
+  // Máxima desviación aceptable: 20 píxeles
+  straightnessScore = Math.max(0, 100 - (avgDeviation * 5));
+  
+  document.getElementById('straightness').textContent = Math.round(straightnessScore) + '%';
+  
+  // Color según rectitud
+  const straightnessEl = document.getElementById('straightness');
+  if (straightnessScore >= 80) {
+    straightnessEl.className = 'info-value good';
+  } else if (straightnessScore >= 60) {
+    straightnessEl.className = 'info-value warning';
+  } else {
+    straightnessEl.className = 'info-value error';
+  }
+}
+
+// Calcular distancia de un punto a una línea
+function distancePointToLine(point, lineStart, lineEnd) {
+  const A = point.x - lineStart.x;
+  const B = point.y - lineStart.y;
+  const C = lineEnd.x - lineStart.x;
+  const D = lineEnd.y - lineStart.y;
+  
+  const dot = A * C + B * D;
+  const lenSq = C * C + D * D;
+  let param = -1;
+  
+  if (lenSq !== 0) {
+    param = dot / lenSq;
+  }
+  
+  let xx, yy;
+  
+  if (param < 0) {
+    xx = lineStart.x;
+    yy = lineStart.y;
+  } else if (param > 1) {
+    xx = lineEnd.x;
+    yy = lineEnd.y;
+  } else {
+    xx = lineStart.x + param * C;
+    yy = lineStart.y + param * D;
+  }
+  
+  const dx = point.x - xx;
+  const dy = point.y - yy;
+  
+  return Math.sqrt(dx * dx + dy * dy);
 }
 
 // ============================================
@@ -680,12 +964,16 @@ function startEvaluation() {
       angleScores: [],
       stabilityScores: [],
       speedValues: [],
+      approachSpeedValues: [],
+      straightnessValues: [],
       distanceValues: [],
       distanceConsistency: []
     }
   };
   
-  // Reiniciar consumo de electrodo
+  // Reiniciar historiales
+  pathHistory = [];
+  positionHistory = [];
   electrodoConsumption = 0;
   
   // Actualizar UI
@@ -740,6 +1028,8 @@ function recordEvaluationData() {
   const currentAngle = parseFloat(angleDisplay.textContent) || 0;
   const currentStability = stabilityScore || 0;
   const currentSpeed = parseFloat(document.getElementById('speed').textContent) || 0;
+  const currentApproachSpeed = parseFloat(document.getElementById('approachSpeed').textContent) || 0;
+  const currentStraightness = straightnessScore || 0;
   const currentDistance = parseFloat(document.getElementById('dist').textContent) || 0;
   
   // Solo registrar si tenemos datos válidos
@@ -749,28 +1039,23 @@ function recordEvaluationData() {
       angle: currentAngle,
       stability: currentStability,
       speed: currentSpeed,
+      approachSpeed: currentApproachSpeed,
+      straightness: currentStraightness,
       distance: currentDistance
     };
     
     evaluationSession.dataPoints.push(dataPoint);
     
-    // Calcular puntaje en tiempo real
+    // Calcular puntajes en tiempo real
     const optimal = weldConfig.optimalAngle[weldConfig.type];
     const angleScore = calculateAngleScore(currentAngle, optimal);
-    
-    // Para electrodo: evaluar disminución constante de distancia
-    let distanceConsistencyScore = 100;
-    if (weldConfig.type === 'electrodo' && evaluationSession.metrics.distanceValues.length > 0) {
-      const lastDistance = evaluationSession.metrics.distanceValues[evaluationSession.metrics.distanceValues.length - 1];
-      const shouldDecrease = currentDistance < lastDistance; // La distancia debería disminuir
-      distanceConsistencyScore = shouldDecrease ? 100 : 50;
-    }
     
     evaluationSession.metrics.angleScores.push(angleScore);
     evaluationSession.metrics.stabilityScores.push(currentStability);
     evaluationSession.metrics.speedValues.push(currentSpeed);
+    evaluationSession.metrics.approachSpeedValues.push(Math.abs(currentApproachSpeed));
+    evaluationSession.metrics.straightnessValues.push(currentStraightness);
     evaluationSession.metrics.distanceValues.push(currentDistance);
-    evaluationSession.metrics.distanceConsistency.push(distanceConsistencyScore);
     
     // Actualizar puntaje en UI
     updateLiveScore();
@@ -797,7 +1082,7 @@ function updateLiveScore() {
   const avgAngleScore = evaluationSession.metrics.angleScores.reduce((a, b) => a + b, 0) / evaluationSession.metrics.angleScores.length;
   const avgStability = evaluationSession.metrics.stabilityScores.reduce((a, b) => a + b, 0) / evaluationSession.metrics.stabilityScores.length;
   
-  const liveScore = Math.round((avgAngleScore * 0.7) + (avgStability * 0.3));
+  const liveScore = Math.round((avgAngleScore * 0.6) + (avgStability * 0.4));
   
   document.getElementById('evalScore').textContent = liveScore;
   document.getElementById('evalScore').style.color = getScoreColor(liveScore);
@@ -810,19 +1095,21 @@ function getScoreColor(score) {
   return '#f00';
 }
 
-// Procesar datos de evaluación - MEJORADO CON EVALUACIÓN DE DISTANCIA
+// Procesar datos de evaluación
 function processEvaluationData() {
   if (evaluationSession.dataPoints.length === 0) return;
   
   const optimal = weldConfig.optimalAngle[weldConfig.type];
   const optimalDist = weldConfig.optimalDistance[weldConfig.type];
+  const optimalSpeed = weldConfig.optimalSpeed[weldConfig.type];
   
   // Calcular métricas
   const angleScores = evaluationSession.metrics.angleScores;
   const stabilityScores = evaluationSession.metrics.stabilityScores;
   const speedValues = evaluationSession.metrics.speedValues;
+  const approachSpeedValues = evaluationSession.metrics.approachSpeedValues;
+  const straightnessValues = evaluationSession.metrics.straightnessValues;
   const distanceValues = evaluationSession.metrics.distanceValues;
-  const distanceConsistency = evaluationSession.metrics.distanceConsistency;
   
   // 1. Puntaje de ángulo
   const avgAngleScore = angleScores.reduce((a, b) => a + b, 0) / angleScores.length;
@@ -831,34 +1118,42 @@ function processEvaluationData() {
   // 2. Puntaje de estabilidad
   const avgStability = stabilityScores.reduce((a, b) => a + b, 0) / stabilityScores.length;
   
-  // 3. Puntaje de velocidad (consistencia)
-  const speedScore = calculateSpeedScore(speedValues, weldConfig.type);
+  // 3. Puntaje de velocidad de traslación
+  const avgSpeed = speedValues.reduce((a, b) => a + b, 0) / speedValues.length;
+  const speedScore = calculateSpeedScore(avgSpeed, optimalSpeed, weldConfig.type);
   
-  // 4. Puntaje de distancia - MEJORADO
+  // 4. Puntaje de velocidad de aproximación
+  const avgApproachSpeed = approachSpeedValues.reduce((a, b) => a + b, 0) / approachSpeedValues.length;
+  const approachScore = calculateApproachScore(avgApproachSpeed, weldConfig.type);
+  
+  // 5. Puntaje de rectitud
+  const avgStraightness = straightnessValues.reduce((a, b) => a + b, 0) / straightnessValues.length;
+  
+  // 6. Puntaje de distancia
   const avgDistance = distanceValues.reduce((a, b) => a + b, 0) / distanceValues.length;
   const distanceScore = calculateDistanceScore(avgDistance, optimalDist, weldConfig.type);
   
-  // 5. Consistencia de distancia (especial para electrodo)
-  const distanceConsistencyScore = distanceConsistency.reduce((a, b) => a + b, 0) / distanceConsistency.length;
-  
-  // Puntaje final - MEJORADO
+  // Puntaje final - PESOS AJUSTADOS
   let finalScore = 0;
   if (weldConfig.type === 'electrodo') {
-    // Para electrodo: más peso en consistencia de distancia
+    // Para electrodo: énfasis en aproximación y rectitud
     finalScore = Math.round(
-      (avgAngleScore * 0.3) +
-      (avgStability * 0.2) +
+      (avgAngleScore * 0.2) +
+      (avgStability * 0.15) +
       (speedScore * 0.15) +
-      (distanceScore * 0.15) +
-      (distanceConsistencyScore * 0.2)
+      (approachScore * 0.25) +
+      (avgStraightness * 0.15) +
+      (distanceScore * 0.1)
     );
   } else {
-    // Para MIG/TIG
+    // Para MIG/TIG: énfasis en velocidad y rectitud
     finalScore = Math.round(
-      (avgAngleScore * 0.4) +
-      (avgStability * 0.3) +
-      (speedScore * 0.15) +
-      (distanceScore * 0.15)
+      (avgAngleScore * 0.25) +
+      (avgStability * 0.2) +
+      (speedScore * 0.2) +
+      (approachScore * 0.1) +
+      (avgStraightness * 0.15) +
+      (distanceScore * 0.1)
     );
   }
   
@@ -866,6 +1161,7 @@ function processEvaluationData() {
   evaluationSession.results = {
     duration: evaluationSession.duration,
     finalScore: finalScore,
+    weldType: weldConfig.type,
     metrics: {
       angle: {
         score: Math.round(avgAngleScore),
@@ -875,82 +1171,109 @@ function processEvaluationData() {
         score: Math.round(avgStability)
       },
       speed: {
-        score: Math.round(speedScore)
+        score: Math.round(speedScore),
+        average: avgSpeed.toFixed(1)
+      },
+      approach: {
+        score: Math.round(approachScore),
+        average: avgApproachSpeed.toFixed(1)
+      },
+      straightness: {
+        score: Math.round(avgStraightness)
       },
       distance: {
         score: Math.round(distanceScore),
-        average: Math.round(avgDistance * 10) / 10,
-        consistency: Math.round(distanceConsistencyScore)
+        average: avgDistance.toFixed(1)
       }
-    },
-    weldType: weldConfig.type
+    }
   };
   
   // Generar recomendaciones
   evaluationSession.recommendations = generateRecommendations(evaluationSession.results);
 }
 
-// Calcular puntaje de velocidad - MEJORADO
-function calculateSpeedScore(speedValues, weldType) {
-  const validSpeeds = speedValues.filter(v => v > 0 && v < 50);
-  if (validSpeeds.length < 2) return 50;
-  
-  const avgSpeed = validSpeeds.reduce((a, b) => a + b) / validSpeeds.length;
-  
-  // Velocidad ideal según tipo de soldadura
+// Calcular puntaje de velocidad de traslación
+function calculateSpeedScore(speed, optimal, weldType) {
   if (weldType === 'electrodo') {
     // Electrodo: más lento y constante
-    if (avgSpeed >= 0.3 && avgSpeed <= 0.8) {
+    if (speed >= optimal.min && speed <= optimal.max) {
       return 90 + (Math.random() * 5);
-    } else if (avgSpeed >= 0.2 && avgSpeed <= 1.2) {
+    } else if (speed >= optimal.min * 0.7 && speed <= optimal.max * 1.3) {
       return 70 + (Math.random() * 10);
     } else {
       return 40 + (Math.random() * 20);
     }
   } else {
-    // MIG/TIG: velocidad normal
-    if (avgSpeed >= 5 && avgSpeed <= 15) {
-      return 85 + (Math.random() * 10);
-    } else if (avgSpeed >= 3 && avgSpeed <= 20) {
-      return 70 + (Math.random() * 10);
+    // MIG/TIG
+    if (speed >= optimal.min && speed <= optimal.max) {
+      return 90 + (Math.random() * 5);
+    } else if (speed >= optimal.min * 0.8 && speed <= optimal.max * 1.2) {
+      return 75 + (Math.random() * 10);
+    } else if (speed >= optimal.min * 0.6 && speed <= optimal.max * 1.4) {
+      return 55 + (Math.random() * 10);
     } else {
-      return 40 + (Math.random() * 20);
+      return 35 + (Math.random() * 20);
     }
   }
 }
 
-// Calcular puntaje de distancia - MEJORADO
+// Calcular puntaje de velocidad de aproximación
+function calculateApproachScore(speed, weldType) {
+  if (weldType === 'electrodo') {
+    // Para electrodo, ideal: -0.3 cm/s (acercamiento constante)
+    if (speed >= 0.1 && speed <= 0.5) {
+      return 85 + (Math.random() * 10);
+    } else if (speed >= 0.05 && speed <= 0.7) {
+      return 65 + (Math.random() * 10);
+    } else {
+      return 40 + (Math.random() * 15);
+    }
+  } else {
+    // Para MIG/TIG, ideal: mínima aproximación (< 0.5 cm/s)
+    if (speed < 0.3) {
+      return 90 + (Math.random() * 5);
+    } else if (speed < 0.6) {
+      return 70 + (Math.random() * 10);
+    } else if (speed < 1.0) {
+      return 50 + (Math.random() * 10);
+    } else {
+      return 30 + (Math.random() * 15);
+    }
+  }
+}
+
+// Calcular puntaje de distancia
 function calculateDistanceScore(distance, optimalDist, weldType) {
   const idealDistance = (optimalDist.min + optimalDist.max) / 2;
   const diff = Math.abs(distance - idealDistance);
   const range = optimalDist.max - optimalDist.min;
   
   if (weldType === 'electrodo') {
-    // Para electrodo, más tolerante porque debe ir disminuyendo
+    // Para electrodo, más tolerante
     if (diff <= range * 0.3) {
-      return 90 + (Math.random() * 10);
+      return 85 + (Math.random() * 10);
     } else if (diff <= range * 0.6) {
-      return 70 + (Math.random() * 10);
+      return 65 + (Math.random() * 10);
     } else if (diff <= range) {
-      return 50 + (Math.random() * 10);
+      return 45 + (Math.random() * 10);
     } else {
-      return 30 + (Math.random() * 10);
+      return 25 + (Math.random() * 10);
     }
   } else {
     // Para MIG/TIG
     if (diff <= range * 0.2) {
-      return 90 + (Math.random() * 10);
+      return 90 + (Math.random() * 5);
     } else if (diff <= range * 0.4) {
-      return 70 + (Math.random() * 10);
+      return 75 + (Math.random() * 10);
     } else if (diff <= range * 0.6) {
-      return 50 + (Math.random() * 10);
+      return 55 + (Math.random() * 10);
     } else {
-      return 30 + (Math.random() * 10);
+      return 35 + (Math.random() * 10);
     }
   }
 }
 
-// Generar recomendaciones - MEJORADO CON DISTANCIA
+// Generar recomendaciones
 function generateRecommendations(results) {
   const recommendations = [];
   const metrics = results.metrics;
@@ -959,56 +1282,58 @@ function generateRecommendations(results) {
   // Recomendaciones basadas en ángulo
   if (metrics.angle.score < 70) {
     if (weldType === 'electrodo') {
-      recommendations.push("Para electrodo, mantén el ángulo entre 5°-15°");
+      recommendations.push("Mantén el ángulo entre 5°-15° para electrodo");
     } else if (weldType === 'tig') {
-      recommendations.push("Para TIG, mantén el ángulo entre 10°-20°");
+      recommendations.push("Para TIG, ángulo ideal: 10°-20°");
     } else {
-      recommendations.push("Para MIG/MAG, mantén el ángulo entre 15°-25°");
+      recommendations.push("Para MIG/MAG, ángulo ideal: 15°-25°");
     }
   }
   
   // Recomendaciones basadas en estabilidad
   if (metrics.stability.score < 70) {
     recommendations.push("Apoya el codo para mayor estabilidad");
-    if (metrics.stability.score < 50) {
-      recommendations.push("Practica ejercicios de respiración para reducir temblor");
-    }
   }
   
-  // Recomendaciones basadas en velocidad
+  // Recomendaciones basadas en velocidad de traslación
   if (metrics.speed.score < 70) {
     if (weldType === 'electrodo') {
-      recommendations.push("Para electrodo, avanza a 0.5-1 cm/s manteniendo ritmo constante");
+      recommendations.push("Electrodo: avanza a 0.3-0.8 cm/s");
+    } else if (weldType === 'tig') {
+      recommendations.push("TIG: velocidad ideal 3-10 cm/s");
     } else {
-      recommendations.push("Mantén una velocidad constante de 5-15 cm/s");
+      recommendations.push("MIG: velocidad ideal 5-15 cm/s");
     }
   }
   
-  // Recomendaciones basadas en distancia - MEJORADO
+  // Recomendaciones basadas en velocidad de aproximación
+  if (metrics.approach.score < 70) {
+    if (weldType === 'electrodo') {
+      recommendations.push("Con electrodo, acerca la antorcha gradualmente (-0.1 a -0.5 cm/s)");
+    } else {
+      recommendations.push("Mantén distancia constante (variación < 0.5 cm/s)");
+    }
+  }
+  
+  // Recomendaciones basadas en rectitud
+  if (metrics.straightness.score < 70) {
+    recommendations.push("Practica mantener una línea recta al soldar");
+  }
+  
+  // Recomendaciones basadas en distancia
   if (metrics.distance.score < 70) {
     if (weldType === 'electrodo') {
-      recommendations.push("Con electrodo, acerca gradualmente la antorcha (5-10 cm)");
-      if (metrics.distance.consistency < 70) {
-        recommendations.push("La distancia debe disminuir constantemente mientras el electrodo se consume");
-      }
+      recommendations.push("Electrodo: mantén 5-10 cm de distancia");
     } else if (weldType === 'tig') {
-      recommendations.push("Mantén el electrodo TIG a 8-15 cm de la pieza");
+      recommendations.push("TIG: distancia ideal 8-15 cm");
     } else {
-      recommendations.push("Mantén la antorcha MIG a 15-25 cm de la pieza");
+      recommendations.push("MIG: distancia ideal 15-25 cm");
     }
   }
   
-  // Recomendación especial para variación de distancia
-  if (weldType !== 'electrodo' && metrics.distance.score < 60) {
-    recommendations.push("Evita variaciones bruscas en la distancia al objetivo");
-  }
-  
-  // Recomendaciones generales si todo está bien
+  // Recomendaciones generales
   if (recommendations.length === 0) {
     recommendations.push("¡Excelente técnica! Mantén la práctica");
-    if (weldType === 'electrodo') {
-      recommendations.push("Perfecto control de la disminución de distancia con el electrodo");
-    }
   }
   
   return recommendations;
@@ -1039,7 +1364,9 @@ function showResults() {
   // Actualizar métricas detalladas
   updateMetric('angle', metrics.angle.score, getAngleFeedback(metrics.angle.score, results.weldType));
   updateMetric('stability', metrics.stability.score, getStabilityFeedback(metrics.stability.score));
-  updateMetric('speed', metrics.speed.score, getSpeedFeedback(metrics.speed.score, results.weldType));
+  updateMetric('speed', metrics.speed.score, getSpeedFeedback(metrics.speed, results.weldType));
+  updateMetric('approach', metrics.approach.score, getApproachFeedback(metrics.approach, results.weldType));
+  updateMetric('straightness', metrics.straightness.score, getStraightnessFeedback(metrics.straightness.score));
   updateMetric('distance', metrics.distance.score, getDistanceFeedback(metrics.distance, results.weldType));
   
   // Actualizar recomendaciones
@@ -1063,17 +1390,14 @@ function updateMetric(metricName, score, feedback) {
   document.getElementById(`${metricName}Feedback`).textContent = feedback;
 }
 
-// Obtener feedback para ángulo - MEJORADO
+// Obtener feedback para ángulo
 function getAngleFeedback(score, weldType) {
-  let typeName = "";
-  if (weldType === 'electrodo') typeName = "electrodo";
-  else if (weldType === 'tig') typeName = "TIG";
-  else typeName = "MIG/MAG";
+  let typeName = weldType === 'electrodo' ? "electrodo" : weldType === 'tig' ? "TIG" : "MIG/MAG";
   
   if (score >= 90) return `Ángulo perfecto para ${typeName}`;
   if (score >= 70) return `Buen control del ángulo en ${typeName}`;
-  if (score >= 50) return `Necesita práctica en ángulo para ${typeName}`;
-  return `Requiere mucho entrenamiento en ángulo para ${typeName}`;
+  if (score >= 50) return `Ángulo aceptable para ${typeName}`;
+  return `Necesita mejorar ángulo para ${typeName}`;
 }
 
 // Obtener feedback para estabilidad
@@ -1084,37 +1408,59 @@ function getStabilityFeedback(score) {
   return "Muy inestable, necesita entrenamiento";
 }
 
-// Obtener feedback para velocidad - MEJORADO
-function getSpeedFeedback(score, weldType) {
+// Obtener feedback para velocidad
+function getSpeedFeedback(speedData, weldType) {
+  const score = speedData.score;
+  const avg = speedData.average;
+  
   if (weldType === 'electrodo') {
-    if (score >= 80) return "Ritmo perfecto de avance con electrodo";
-    if (score >= 60) return "Ritmo aceptable con electrodo";
-    return "Ritmo irregular con electrodo";
+    if (score >= 80) return `Ritmo perfecto (${avg} cm/s)`;
+    if (score >= 60) return `Ritmo aceptable (${avg} cm/s)`;
+    return `Ritmo irregular (${avg} cm/s)`;
   } else {
-    if (score >= 80) return "Velocidad constante y óptima";
-    if (score >= 60) return "Velocidad moderada";
-    return "Velocidad variable, practica ritmo constante";
+    if (score >= 80) return `Velocidad óptima (${avg} cm/s)`;
+    if (score >= 60) return `Velocidad moderada (${avg} cm/s)`;
+    return `Velocidad inadecuada (${avg} cm/s)`;
   }
 }
 
-// Obtener feedback para distancia - MEJORADO
-function getDistanceFeedback(distanceMetrics, weldType) {
-  const score = distanceMetrics.score;
-  const avgDistance = distanceMetrics.average;
-  const consistency = distanceMetrics.consistency;
+// Obtener feedback para aproximación
+function getApproachFeedback(approachData, weldType) {
+  const score = approachData.score;
+  const avg = approachData.average;
   
   if (weldType === 'electrodo') {
-    if (score >= 80 && consistency >= 80) {
-      return `Distancia óptima y disminución constante (${avgDistance.toFixed(1)} cm)`;
-    } else if (score >= 60) {
-      return `Distancia aceptable para electrodo (${avgDistance.toFixed(1)} cm)`;
-    } else {
-      return `Problemas con control de distancia en electrodo (${avgDistance.toFixed(1)} cm)`;
-    }
+    if (score >= 80) return `Aproximación constante (${avg} cm/s)`;
+    if (score >= 60) return `Aproximación aceptable (${avg} cm/s)`;
+    return `Aproximación irregular (${avg} cm/s)`;
   } else {
-    if (score >= 80) return `Distancia perfecta (${avgDistance.toFixed(1)} cm)`;
-    if (score >= 60) return `Distancia aceptable (${avgDistance.toFixed(1)} cm)`;
-    return `Distancia inadecuada (${avgDistance.toFixed(1)} cm)`;
+    if (score >= 80) return `Distancia muy constante`;
+    if (score >= 60) return `Distancia aceptable`;
+    return `Variación excesiva en distancia`;
+  }
+}
+
+// Obtener feedback para rectitud
+function getStraightnessFeedback(score) {
+  if (score >= 85) return "Línea muy recta";
+  if (score >= 65) return "Rectitud aceptable";
+  if (score >= 45) return "Línea algo curva";
+  return "Necesita practicar línea recta";
+}
+
+// Obtener feedback para distancia
+function getDistanceFeedback(distanceData, weldType) {
+  const score = distanceData.score;
+  const avg = distanceData.average;
+  
+  if (weldType === 'electrodo') {
+    if (score >= 80) return `Distancia óptima (${avg} cm)`;
+    if (score >= 60) return `Distancia aceptable (${avg} cm)`;
+    return `Distancia inadecuada (${avg} cm)`;
+  } else {
+    if (score >= 80) return `Distancia perfecta (${avg} cm)`;
+    if (score >= 60) return `Distancia adecuada (${avg} cm)`;
+    return `Distancia incorrecta (${avg} cm)`;
   }
 }
 
@@ -1137,12 +1483,15 @@ function startNewSession() {
       angleScores: [],
       stabilityScores: [],
       speedValues: [],
-      distanceValues: [],
-      distanceConsistency: []
+      approachSpeedValues: [],
+      straightnessValues: [],
+      distanceValues: []
     }
   };
   
-  // Reiniciar electrodo
+  // Reiniciar historiales
+  pathHistory = [];
+  positionHistory = [];
   electrodoConsumption = 0;
   
   // Actualizar UI
@@ -1169,9 +1518,10 @@ function shareResults() {
 📊 Puntaje: ${results.finalScore}/100
 🎯 Ángulo: ${metrics.angle.score}%
 🤲 Estabilidad: ${metrics.stability.score}%
-🚀 Velocidad: ${metrics.speed.score}%
+🚀 Vel. Traslación: ${metrics.speed.score}%
+⬇️ Vel. Aproximación: ${metrics.approach.score}%
+📐 Rectitud: ${metrics.straightness.score}%
 📏 Distancia: ${metrics.distance.score}%
-📈 Consistencia: ${metrics.distance.consistency}%
 
 #Soldadura #Simulador #Entrenamiento #${weldTypeName}`;
   
