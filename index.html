@@ -42,8 +42,28 @@
       </div>
       
       <div class="control-group">
-        <div class="control-title">Sonidos</div>
-        <button id="soundToggle" class="active">🔊 Sonidos ON</button>
+        <div class="control-title">Modo</div>
+        <button id="modeBtn" class="active">Modo Guiado</button>
+      </div>
+    </div>
+    
+    <!-- Panel de evaluación -->
+    <div id="evaluationPanel" class="evaluation-panel">
+      <div class="evaluation-header">
+        <h3>📊 Evaluación en Curso</h3>
+        <div class="timer" id="sessionTimer">00:00</div>
+      </div>
+      <div class="evaluation-stats">
+        <div class="stat-item">
+          <span class="stat-label">Tiempo:</span>
+          <span class="stat-value" id="evalTime">0s</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">Puntaje:</span>
+          <span class="stat-value" id="evalScore">0</span>
+        </div>
+        <button id="startEvalBtn" class="eval-btn">▶️ Iniciar Evaluación</button>
+        <button id="stopEvalBtn" class="eval-btn stop" style="display:none;">⏹️ Detener</button>
       </div>
     </div>
     
@@ -80,12 +100,100 @@
       <button class="action-btn primary" id="calibrateBtn">
         📐 Calibrar Ángulo Cero
       </button>
-      <button class="action-btn secondary" id="helpBtn">
-        ❓ Ayuda
+      <button class="action-btn secondary" id="resultsBtn">
+        📋 Ver Resultados
       </button>
     </div>
     
-    <!-- Elementos de audio para feedback - VERSIONES MEJORADAS -->
+    <!-- Modal de resultados -->
+    <div id="resultsModal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>📊 Resultados de Evaluación</h2>
+          <span class="close-modal">&times;</span>
+        </div>
+        <div class="modal-body">
+          <div class="results-summary">
+            <h3>Resumen de Sesión</h3>
+            <div class="summary-grid">
+              <div class="summary-item">
+                <span class="summary-label">Duración:</span>
+                <span class="summary-value" id="totalTime">0:00</span>
+              </div>
+              <div class="summary-item">
+                <span class="summary-label">Puntaje Final:</span>
+                <span class="summary-value" id="finalScore">0</span>
+              </div>
+              <div class="summary-item">
+                <span class="summary-label">Nivel:</span>
+                <span class="summary-value" id="skillLevel">Principiante</span>
+              </div>
+            </div>
+          </div>
+          
+          <div class="results-details">
+            <h3>Métricas Detalladas</h3>
+            <div class="metric">
+              <div class="metric-header">
+                <span>Ángulo Óptimo</span>
+                <span id="angleScore">0%</span>
+              </div>
+              <div class="metric-bar">
+                <div class="metric-fill" id="angleBar"></div>
+              </div>
+              <div class="metric-desc" id="angleFeedback"></div>
+            </div>
+            
+            <div class="metric">
+              <div class="metric-header">
+                <span>Estabilidad</span>
+                <span id="stabilityScore">0%</span>
+              </div>
+              <div class="metric-bar">
+                <div class="metric-fill" id="stabilityBar"></div>
+              </div>
+              <div class="metric-desc" id="stabilityFeedback"></div>
+            </div>
+            
+            <div class="metric">
+              <div class="metric-header">
+                <span>Velocidad Constante</span>
+                <span id="speedScore">0%</span>
+              </div>
+              <div class="metric-bar">
+                <div class="metric-fill" id="speedBar"></div>
+              </div>
+              <div class="metric-desc" id="speedFeedback"></div>
+            </div>
+            
+            <div class="metric">
+              <div class="metric-header">
+                <span>Distancia Correcta</span>
+                <span id="distanceScore">0%</span>
+              </div>
+              <div class="metric-bar">
+                <div class="metric-fill" id="distanceBar"></div>
+              </div>
+              <div class="metric-desc" id="distanceFeedback"></div>
+            </div>
+          </div>
+          
+          <div class="results-recommendations">
+            <h3>🔧 Recomendaciones para Mejorar</h3>
+            <ul id="recommendationsList">
+              <!-- Las recomendaciones se agregarán dinámicamente -->
+            </ul>
+          </div>
+          
+          <div class="results-actions">
+            <button id="newSessionBtn" class="action-btn primary">🔄 Nueva Sesión</button>
+            <button id="shareResultsBtn" class="action-btn secondary">📤 Compartir</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Elementos de audio -->
     <audio id="goodSound" preload="auto">
       <source src="https://assets.mixkit.co/active_storage/sfx/287/287-preview.mp3" type="audio/mpeg">
     </audio>
@@ -95,9 +203,6 @@
     <audio id="highAngleSound" preload="auto">
       <source src="https://assets.mixkit.co/active_storage/sfx/1000/1000-preview.mp3" type="audio/mpeg">
     </audio>
-    <!-- Sonidos alternativos locales usando oscillator API -->
-    <audio id="beepHigh" preload="none"></audio>
-    <audio id="beepLow" preload="none"></audio>
   </div>
 
   <!-- OpenCV.js -->
