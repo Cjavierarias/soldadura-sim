@@ -84,7 +84,7 @@
       <div class="angle-label">Ángulo</div>
     </div>
     
-    <!-- Panel de información -->
+    <!-- Panel de información MEJORADO -->
     <div id="info">
       <div class="info-row">
         <div class="info-item">
@@ -98,12 +98,18 @@
       </div>
       <div class="info-row">
         <div class="info-item">
-          <div class="info-label">Velocidad</div>
+          <div class="info-label">Vel. Traslación</div>
           <div class="info-value" id="speed">-- cm/s</div>
         </div>
         <div class="info-item">
-          <div class="info-label">Estabilidad</div>
-          <div class="info-value" id="stability">--%</div>
+          <div class="info-label">Vel. Aproximación</div>
+          <div class="info-value" id="approachSpeed">-- cm/s</div>
+        </div>
+      </div>
+      <div class="info-row">
+        <div class="info-item full-width">
+          <div class="info-label">Rectitud</div>
+          <div class="info-value" id="straightness">--%</div>
         </div>
       </div>
       <div class="info-status" id="markerStatus">
@@ -173,7 +179,7 @@
             
             <div class="metric">
               <div class="metric-header">
-                <span>Velocidad Constante</span>
+                <span>Vel. Traslación</span>
                 <span id="speedScore">0%</span>
               </div>
               <div class="metric-bar">
@@ -184,7 +190,29 @@
             
             <div class="metric">
               <div class="metric-header">
-                <span>Distancia Correcta</span>
+                <span>Vel. Aproximación</span>
+                <span id="approachScore">0%</span>
+              </div>
+              <div class="metric-bar">
+                <div class="metric-fill" id="approachBar"></div>
+              </div>
+              <div class="metric-desc" id="approachFeedback"></div>
+            </div>
+            
+            <div class="metric">
+              <div class="metric-header">
+                <span>Rectitud</span>
+                <span id="straightnessScore">0%</span>
+              </div>
+              <div class="metric-bar">
+                <div class="metric-fill" id="straightnessBar"></div>
+              </div>
+              <div class="metric-desc" id="straightnessFeedback"></div>
+            </div>
+            
+            <div class="metric">
+              <div class="metric-header">
+                <span>Distancia Constante</span>
                 <span id="distanceScore">0%</span>
               </div>
               <div class="metric-bar">
@@ -209,7 +237,7 @@
       </div>
     </div>
     
-    <!-- Elementos de audio MEJORADOS -->
+    <!-- Elementos de audio -->
     <audio id="beepHigh" preload="auto">
       <source src="https://assets.mixkit.co/sfx/preview/mixkit-retro-arcade-game-beep-1095.mp3" type="audio/mpeg">
     </audio>
