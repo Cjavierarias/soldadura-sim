@@ -2,6 +2,7 @@
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+  touch-action: manipulation;
 }
 
 body {
@@ -211,7 +212,7 @@ button.active {
 }
 
 /* =========================================== */
-/* PANEL DE EVALUACIÓN MEJORADO */
+/* PANEL DE EVALUACIÓN */
 /* =========================================== */
 
 .evaluation-stats {
@@ -290,7 +291,7 @@ button.active {
 }
 
 /* =========================================== */
-/* INDICADOR DE ÁNGULO MEJORADO */
+/* INDICADOR DE ÁNGULO */
 /* =========================================== */
 
 #angleIndicator {
@@ -326,12 +327,12 @@ button.active {
 }
 
 /* =========================================== */
-/* PANEL DE INFORMACIÓN MEJORADO */
+/* PANEL DE INFORMACIÓN */
 /* =========================================== */
 
 #info {
   position: absolute;
-  bottom: 20px;
+  bottom: 180px;
   left: 20px;
   right: 20px;
   background: rgba(0, 0, 0, 0.8);
@@ -355,7 +356,7 @@ button.active {
   padding: 10px;
   border-radius: 8px;
   border-left: 3px solid #0af;
-  min-width: 0; /* Permite que se ajuste mejor */
+  min-width: 0;
 }
 
 .info-item.full-width {
@@ -394,45 +395,169 @@ button.active {
 .error { color: #f00 !important; }
 
 /* =========================================== */
-/* BOTONES DE ACCIÓN */
+/* BOTÓN DE SOLDADURA */
 /* =========================================== */
 
-#actionButtons {
+#weldButtonContainer {
   position: absolute;
-  bottom: 120px;
+  bottom: 20px;
   left: 20px;
   right: 20px;
-  display: flex;
-  gap: 10px;
   z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
 }
 
-.action-btn {
-  flex: 1;
-  padding: 14px;
-  border-radius: 12px;
+.weld-button {
+  width: 100%;
+  padding: 25px 20px;
+  background: linear-gradient(135deg, #f50, #f80);
+  color: white;
   border: none;
-  font-size: 15px;
+  border-radius: 20px;
+  font-size: 18px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 10px 30px rgba(255, 80, 0, 0.4);
+  border: 3px solid rgba(255, 200, 0, 0.5);
+}
+
+.weld-button:active {
+  background: linear-gradient(135deg, #f00, #f60);
+  transform: scale(0.98);
+  box-shadow: 0 5px 20px rgba(255, 80, 0, 0.6);
+}
+
+.weld-button.active {
+  background: linear-gradient(135deg, #0f0, #0f8);
+  border-color: rgba(0, 255, 100, 0.7);
+  animation: weld-pulse 0.5s infinite alternate;
+}
+
+@keyframes weld-pulse {
+  from {
+    box-shadow: 0 10px 30px rgba(0, 255, 100, 0.4);
+  }
+  to {
+    box-shadow: 0 10px 40px rgba(0, 255, 100, 0.7);
+  }
+}
+
+.weld-icon {
+  font-size: 40px;
+  filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.7));
+}
+
+.weld-text {
+  text-align: center;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+.weld-progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 6px;
+  background: linear-gradient(90deg, #0f0, #ff0);
+  width: 0%;
+  transition: width 0.3s;
+  border-radius: 0 0 17px 17px;
+}
+
+.weld-instruction {
+  color: #ff0;
+  font-size: 12px;
+  text-align: center;
+  background: rgba(0, 0, 0, 0.5);
+  padding: 8px 15px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 200, 0, 0.3);
+}
+
+/* =========================================== */
+/* MODAL DE PAUSA */
+/* =========================================== */
+
+.pause-modal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.85);
+  z-index: 1001;
+  justify-content: center;
+  align-items: center;
+  backdrop-filter: blur(5px);
+}
+
+.pause-content {
+  background: linear-gradient(135deg, #2a1a2e, #26213e);
+  width: 90%;
+  max-width: 400px;
+  padding: 25px;
+  border-radius: 20px;
+  border: 3px solid rgba(255, 100, 0, 0.5);
+  text-align: center;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.7);
+}
+
+.pause-content h3 {
+  color: #f80;
+  margin-bottom: 15px;
+  font-size: 22px;
+}
+
+.pause-content p {
+  color: #ccc;
+  margin-bottom: 25px;
+  line-height: 1.5;
+}
+
+.pause-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.pause-btn {
+  padding: 16px;
+  border: none;
+  border-radius: 12px;
+  font-size: 16px;
   font-weight: bold;
   cursor: pointer;
   transition: all 0.3s;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 10px;
 }
 
-.action-btn.primary {
+.pause-btn.continue {
   background: linear-gradient(135deg, #0a6, #0fc);
+  color: white;
 }
 
-.action-btn.secondary {
-  background: linear-gradient(135deg, #444, #666);
+.pause-btn.end {
+  background: linear-gradient(135deg, #f06, #f40);
+  color: white;
 }
 
-.action-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+.pause-btn:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
 }
 
 /* =========================================== */
@@ -657,13 +782,18 @@ button.active {
     font-size: 10px;
   }
   
+  #info {
+    bottom: 160px;
+    left: 10px;
+    right: 10px;
+  }
+  
   .info-row {
     flex-direction: column;
     gap: 8px;
   }
   
   .info-item {
-    min-width: 0;
     width: 100%;
   }
   
@@ -679,15 +809,19 @@ button.active {
     font-size: 16px;
   }
   
-  #actionButtons {
-    flex-direction: column;
+  #weldButtonContainer {
     bottom: 10px;
-    gap: 8px;
+    left: 10px;
+    right: 10px;
   }
   
-  .action-btn {
-    padding: 12px;
-    font-size: 14px;
+  .weld-button {
+    padding: 20px 15px;
+    font-size: 16px;
+  }
+  
+  .weld-icon {
+    font-size: 35px;
   }
   
   .evaluation-controls {
@@ -717,6 +851,14 @@ button.active {
   .metric-desc {
     font-size: 11px;
   }
+  
+  .pause-actions {
+    flex-direction: column;
+  }
+  
+  .pause-btn {
+    width: 100%;
+  }
 }
 
 @media (max-width: 480px) {
@@ -743,5 +885,14 @@ button.active {
   
   .score-value {
     font-size: 16px;
+  }
+  
+  .weld-button {
+    padding: 18px 12px;
+    font-size: 15px;
+  }
+  
+  .weld-icon {
+    font-size: 30px;
   }
 }
