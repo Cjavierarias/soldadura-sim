@@ -1,3 +1,9 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
 body {
   margin: 0;
   overflow: hidden;
@@ -253,35 +259,9 @@ button.active {
   box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
 }
 
-/* Media queries para móviles */
-@media (max-width: 768px) {
-  #controls {
-    flex-direction: column;
-    gap: 5px;
-  }
-  
-  #info {
-    grid-template-columns: 1fr 1fr;
-    bottom: 100px;
-  }
-  
-  #actionButtons {
-    flex-direction: column;
-    bottom: 20px;
-  }
-  
-  #angleIndicator {
-    width: 80px;
-    height: 80px;
-    top: 30%;
-  }
-  
-  .angle-value {
-    font-size: 20px;
-  }
-  
-}
-/* Estilos para el sistema de evaluación */
+/* =========================================== */
+/* ESTILOS PARA EL SISTEMA DE EVALUACIÓN */
+/* =========================================== */
 
 .evaluation-panel {
   position: absolute;
@@ -555,6 +535,31 @@ button.active {
 
 /* Media queries */
 @media (max-width: 768px) {
+  #controls {
+    flex-direction: column;
+    gap: 5px;
+  }
+  
+  #info {
+    grid-template-columns: 1fr 1fr;
+    bottom: 100px;
+  }
+  
+  #actionButtons {
+    flex-direction: column;
+    bottom: 20px;
+  }
+  
+  #angleIndicator {
+    width: 80px;
+    height: 80px;
+    top: 30%;
+  }
+  
+  .angle-value {
+    font-size: 20px;
+  }
+  
   .evaluation-panel {
     top: 150px;
   }
