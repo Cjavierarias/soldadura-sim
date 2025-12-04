@@ -1,137 +1,148 @@
-// pattern-converter.js
-// Convierte tu imagen 4x4_1000.png a formato .patt para AR.js
+// pattern-converter.js - MEJORADO
+// Incluye patrón embebido para que funcione inmediatamente
 
-function convertImageToPattern() {
-  // Esta función se ejecuta cuando la página carga
-  console.log("Preparando patrón para AR.js...");
+class PatternConverter {
+  constructor() {
+    this.patternReady = false;
+    this.patternData = null;
+  }
   
-  // Verificar si ya existe el archivo .patt
-  checkPatternFile();
-}
-
-function checkPatternFile() {
-  // Intentar cargar el patrón
-  const testReq = new XMLHttpRequest();
-  testReq.open('GET', '4x4_1000.patt', true);
-  
-  testReq.onload = function() {
-    if (testReq.status === 200) {
-      console.log("Patrón .patt encontrado");
-      document.getElementById('loadStatus').textContent = 'Patrón AR listo ✅';
-    } else {
-      console.log("Creando patrón .patt desde imagen...");
-      createPatternFromImage();
-    }
-  };
-  
-  testReq.onerror = function() {
-    console.log("No hay patrón .patt, creando uno por defecto...");
-    createDefaultPattern();
-  };
-  
-  testReq.send();
-}
-
-function createDefaultPattern() {
-  // Crear un patrón .patt simple para pruebas
-  const defaultPattern = `
-    # Patrón AR.js para simulador de soldadura
-    # Generado automáticamente
-    25 25
-    255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255
-    255 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 255
-    255 0 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 0 255
-    255 0 255 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 255 0 255
-    255 0 255 0 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 0 255 0 255
-    255 0 255 0 255 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 255 0 255 0 255
-    255 0 255 0 255 0 255 255 255 255 255 255 255 255 255 255 255 255 255 0 255 0 255 0 255
-    255 0 255 0 255 0 255 0 0 0 0 0 0 0 0 0 0 0 255 0 255 0 255 0 255
-    255 0 255 0 255 0 255 0 255 255 255 255 255 255 255 255 255 0 255 0 255 0 255 0 255
-    255 0 255 0 255 0 255 0 255 0 0 0 0 0 0 0 255 0 255 0 255 0 255 0 255
-    255 0 255 0 255 0 255 0 255 0 255 255 255 255 0 255 255 0 255 0 255 0 255 0 255
-    255 0 255 0 255 0 255 0 255 0 255 0 0 255 0 255 255 0 255 0 255 0 255 0 255
-    255 0 255 0 255 0 255 0 255 0 255 0 0 255 0 255 255 0 255 0 255 0 255 0 255
-    255 0 255 0 255 0 255 0 255 0 255 255 255 255 0 255 255 0 255 0 255 0 255 0 255
-    255 0 255 0 255 0 255 0 255 0 0 0 0 0 0 0 255 0 255 0 255 0 255 0 255
-    255 0 255 0 255 0 255 0 255 255 255 255 255 255 255 255 255 0 255 0 255 0 255 0 255
-    255 0 255 0 255 0 255 0 0 0 0 0 0 0 0 0 0 0 255 0 255 0 255 0 255
-    255 0 255 0 255 0 255 255 255 255 255 255 255 255 255 255 255 255 255 0 255 0 255 0 255
-    255 0 255 0 255 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 255 0 255 0 255
-    255 0 255 0 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 0 255 0 255
-    255 0 255 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 255 0 255
-    255 0 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 0 255
-    255 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 255
-    255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255
-  `;
-  
-  // Crear un blob y descargarlo
-  const blob = new Blob([defaultPattern], { type: 'text/plain' });
-  const url = URL.createObjectURL(blob);
-  
-  // Guardar en localStorage como fallback
-  localStorage.setItem('weldPattern', defaultPattern);
-  
-  console.log("Patrón por defecto creado");
-  document.getElementById('loadStatus').textContent = 'Patrón creado (usando patrón por defecto)';
-}
-
-function createPatternFromImage() {
-  // Convertir imagen a patrón usando un canvas
-  const img = new Image();
-  img.crossOrigin = 'anonymous';
-  img.src = '4x4_1000.png';
-  
-  img.onload = function() {
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
+  init() {
+    console.log("PatternConverter: Inicializando...");
     
-    // Redimensionar a 25x25 (tamaño estándar AR.js)
-    canvas.width = 25;
-    canvas.height = 25;
+    // Primero intentar cargar patrón existente
+    this.loadExistingPattern();
+  }
+  
+  loadExistingPattern() {
+    // Intentar cargar desde varias fuentes
+    const sources = [
+      '4x4_1000.patt',
+      'pattern.patt',
+      'assets/4x4_1000.patt'
+    ];
     
-    ctx.drawImage(img, 0, 0, 25, 25);
-    const imageData = ctx.getImageData(0, 0, 25, 25);
+    let loaded = false;
     
-    // Convertir a formato .patt
-    let patternContent = '25 25\n';
-    
-    for (let y = 0; y < 25; y++) {
-      let row = '';
-      for (let x = 0; x < 25; x++) {
-        const index = (y * 25 + x) * 4;
-        const r = imageData.data[index];
-        const g = imageData.data[index + 1];
-        const b = imageData.data[index + 2];
-        
-        // Convertir a escala de grises (0-255)
-        const gray = Math.round((r + g + b) / 3);
-        row += gray + (x < 24 ? ' ' : '');
+    sources.forEach(source => {
+      if (!loaded) {
+        this.tryLoadPattern(source).then(success => {
+          if (success) loaded = true;
+        });
       }
-      patternContent += row + (y < 24 ? '\n' : '');
+    });
+    
+    // Si no carga después de 2 segundos, usar patrón embebido
+    setTimeout(() => {
+      if (!this.patternReady) {
+        console.log("PatternConverter: Usando patrón embebido...");
+        this.createEmbeddedPattern();
+      }
+    }, 2000);
+  }
+  
+  async tryLoadPattern(url) {
+    try {
+      const response = await fetch(url);
+      if (response.ok) {
+        const text = await response.text();
+        this.patternData = text;
+        this.patternReady = true;
+        console.log(`PatternConverter: Patrón cargado desde ${url}`);
+        this.onPatternReady();
+        return true;
+      }
+    } catch (error) {
+      console.log(`PatternConverter: No se pudo cargar ${url}`);
+    }
+    return false;
+  }
+  
+  createEmbeddedPattern() {
+    // Patrón AR.js embebido (patrón simple de 4x4)
+    this.patternData = `25 25
+238 238 238 238 238 238 238 238 238 238 238 238 238 238 238 238 238 238 238 238 238 238 238 238 238
+238 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 238
+238 0 238 238 238 238 238 238 238 238 238 238 238 238 238 238 238 238 238 238 238 238 238 0 238
+238 0 238 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 238 0 238
+238 0 238 0 238 238 238 238 238 238 238 238 238 238 238 238 238 238 238 238 238 0 238 0 238
+238 0 238 0 238 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 238 0 238 0 238
+238 0 238 0 238 0 238 238 238 238 238 238 238 238 238 238 238 238 238 0 238 0 238 0 238
+238 0 238 0 238 0 238 0 0 0 0 0 0 0 0 0 0 0 238 0 238 0 238 0 238
+238 0 238 0 238 0 238 0 238 238 238 238 238 238 238 238 238 0 238 0 238 0 238 0 238
+238 0 238 0 238 0 238 0 238 0 0 0 0 0 0 0 238 0 238 0 238 0 238 0 238
+238 0 238 0 238 0 238 0 238 0 238 238 238 238 0 238 238 0 238 0 238 0 238 0 238
+238 0 238 0 238 0 238 0 238 0 238 0 0 238 0 238 238 0 238 0 238 0 238 0 238
+238 0 238 0 238 0 238 0 238 0 238 0 0 238 0 238 238 0 238 0 238 0 238 0 238
+238 0 238 0 238 0 238 0 238 0 238 238 238 238 0 238 238 0 238 0 238 0 238 0 238
+238 0 238 0 238 0 238 0 238 0 0 0 0 0 0 0 238 0 238 0 238 0 238 0 238
+238 0 238 0 238 0 238 0 238 238 238 238 238 238 238 238 238 0 238 0 238 0 238 0 238
+238 0 238 0 238 0 238 0 0 0 0 0 0 0 0 0 0 0 238 0 238 0 238 0 238
+238 0 238 0 238 0 238 238 238 238 238 238 238 238 238 238 238 238 238 0 238 0 238 0 238
+238 0 238 0 238 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 238 0 238 0 238
+238 0 238 0 238 238 238 238 238 238 238 238 238 238 238 238 238 238 238 238 238 0 238 0 238
+238 0 238 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 238 0 238
+238 0 238 238 238 238 238 238 238 238 238 238 238 238 238 238 238 238 238 238 238 238 238 0 238
+238 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 238
+238 238 238 238 238 238 238 238 238 238 238 238 238 238 238 238 238 238 238 238 238 238 238 238 238`;
+    
+    this.patternReady = true;
+    
+    // Crear URL para el patrón embebido
+    this.createPatternBlob();
+    
+    console.log("PatternConverter: Patrón embebido listo");
+    this.onPatternReady();
+  }
+  
+  createPatternBlob() {
+    // Crear blob con el patrón
+    const blob = new Blob([this.patternData], { type: 'text/plain' });
+    this.patternUrl = URL.createObjectURL(blob);
+    
+    // Actualizar el marcador AR.js para usar este blob
+    this.updateARMarker();
+  }
+  
+  updateARMarker() {
+    // Esperar a que AR.js esté listo
+    const checkInterval = setInterval(() => {
+      const arMarker = document.querySelector('a-marker');
+      if (arMarker && this.patternUrl) {
+        arMarker.setAttribute('url', this.patternUrl);
+        console.log("PatternConverter: Marcador actualizado con patrón embebido");
+        clearInterval(checkInterval);
+      }
+    }, 500);
+  }
+  
+  onPatternReady() {
+    // Notificar que el patrón está listo
+    const statusEl = document.getElementById('loadStatus');
+    if (statusEl) {
+      statusEl.textContent = 'Patrón AR listo ✅';
     }
     
-    // Guardar patrón
-    savePatternFile(patternContent, '4x4_1000.patt');
-  };
+    // Disparar evento personalizado
+    const event = new CustomEvent('patternReady', { 
+      detail: { url: this.patternUrl, data: this.patternData } 
+    });
+    document.dispatchEvent(event);
+  }
   
-  img.onerror = function() {
-    console.error("Error cargando imagen, usando patrón por defecto");
-    createDefaultPattern();
-  };
+  getPatternUrl() {
+    return this.patternUrl;
+  }
+  
+  getPatternData() {
+    return this.patternData;
+  }
 }
 
-function savePatternFile(content, filename) {
-  // Crear enlace de descarga
-  const blob = new Blob([content], { type: 'text/plain' });
-  const url = URL.createObjectURL(blob);
-  
-  // Intentar guardar en servidor (no funciona en GitHub Pages estático)
-  // En su lugar, guardamos en localStorage
-  localStorage.setItem('weldPattern', content);
-  
-  console.log("Patrón convertido y guardado");
-  document.getElementById('loadStatus').textContent = 'Patrón convertido ✅';
-}
+// Crear instancia global
+window.patternConverter = new PatternConverter();
 
-// Iniciar conversión al cargar
-window.addEventListener('load', convertImageToPattern);
+// Inicializar cuando la página cargue
+document.addEventListener('DOMContentLoaded', () => {
+  window.patternConverter.init();
+});
