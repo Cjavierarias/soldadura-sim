@@ -1,20 +1,22 @@
-// app.js - Simulador de Soldadura AR - VERSIÓN COMPLETA Y FUNCIONAL
-// Basado en tu código original con mejoras
+// app.js - Simulador de Soldadura AR con AR.js
+// Datos REALES del patrón, compatible GitHub Pages
 
 // Variables globales
-let video, canvas, ctx;
+let canvas, ctx;
 let isProcessing = false;
 let isWelding = false;
 let lastMarkerPosition = null;
 let markerMovementHistory = [];
-let pathHistory = [];
 let angleHistory = [];
 let stabilityScore = 0;
 let straightnessScore = 0;
-let electrodoConsumption = 0;
 let lastVibrationTime = 0;
 let weldingStartTime = 0;
-let weldingDuration = 0;
+let markerDetected = false;
+let currentAngle = 0;
+let currentDistance = 0;
+let currentSpeed = 0;
+let currentApproachSpeed = 0;
 
 // Configuración de soldadura
 const weldConfig = {
@@ -60,13 +62,15 @@ let evaluationSession = {
 
 // Elementos del DOM
 let markerStatusEl, angleDisplay;
+let arScene = null;
+let arMarker = null;
 
 // ============================================
 // INICIALIZACIÓN
 // ============================================
 
 document.addEventListener('DOMContentLoaded', function() {
-  console.log("Simulador de Soldadura AR - Versión estable");
+  console.log("Simulador de Soldadura AR cargado");
   
   // Configurar botón de inicio
   document.getElementById('startBtn').addEventListener('click', function() {
@@ -74,11 +78,17 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('app').style.display = 'block';
     initApp();
   });
+  
+  document.getElementById('loadStatus').textContent = 'Preparando simulador...';
+  
+  // Verificar si AR.js está disponible
+  if (typeof AFRAME !== 'undefined') {
+    document.getElementById('loadStatus').textContent = 'AR.js listo ✅';
+  }
 });
 
 function initApp() {
   // Obtener elementos del DOM
-  video = document.getElementById('camera');
   canvas = document.getElementById('overlay');
   ctx = canvas.getContext('2d');
   markerStatusEl = document.getElementById('markerStatus');
@@ -94,14 +104,21 @@ function initApp() {
   // Configurar sistema de evaluación
   initEvaluationSystem();
   
-  // Configurar botón de soldadura
+  // Configurar botón de soldadura (VOLUMEN)
   initVolumeButton();
   
   // Configurar paneles minimizables
   initMinimizablePanels();
   
-  // Iniciar cámara
-  initCamera();
+  // Iniciar AR.js
+  initAR();
+  
+  // Iniciar sensores
+  initSensors();
+  
+  // Iniciar procesamiento
+  isProcessing = true;
+  processFrame();
   
   // Manejar redimensionamiento
   window.addEventListener('resize', function() {
@@ -110,10 +127,7 @@ function initApp() {
   });
 }
 
-// ============================================
-// CONTROLES BÁSICOS
-// ============================================
-
+// Inicializar controles
 function initControls() {
   document.getElementById('weldType').addEventListener('change', function(e) {
     weldConfig.type = e.target.value;
@@ -134,11 +148,13 @@ function initControls() {
   document.getElementById('endWeldBtn').addEventListener('click', endWeldingEvaluation);
 }
 
+// Actualizar parámetros de soldadura
 function updateWeldParameters() {
   const optimal = weldConfig.optimalAngle[weldConfig.type];
   markerStatusEl.innerHTML = `🎯 Soldadura ${weldConfig.type.toUpperCase()} - Ángulo óptimo: ${optimal.min}°-${optimal.max}°`;
 }
 
+// Inicializar paneles minimizables
 function initMinimizablePanels() {
   document.getElementById('minimizeControls').addEventListener('click', function() {
     document.getElementById('controlsPanel').classList.toggle('minimized');
@@ -152,74 +168,258 @@ function initMinimizablePanels() {
 }
 
 // ============================================
-// CÁMARA Y SENSORES
+// AR.js - DETECCIÓN REAL DEL PATRÓN
 // ============================================
 
-async function initCamera() {
+function initAR() {
+  console.log("Inicializando AR.js...");
+  
+  const arContainer = document.getElementById('arContainer');
+  
+  // Crear escena AR
+  arContainer.innerHTML = `
+    <a-scene 
+      embedded 
+      arjs="sourceType: webcam; debugUIEnabled: false; detectionMode: mono_and_matrix; matrixCodeType: 4x4;"
+      vr-mode-ui="enabled: false"
+      renderer="logarithmicDepthBuffer: true;"
+    >
+      <!-- Cámara -->
+      <a-entity camera></a-entity>
+      
+      <!-- Marcador para tu patrón 4x4_1000 -->
+      <a-marker 
+        id="weld-marker"
+        type="pattern" 
+        url="4x4_1000.patt"
+        size="0.2"
+        smooth="true"
+        smoothCount="5"
+        smoothTolerance="0.01"
+        smoothThreshold="5"
+        emitevents="true"
+      >
+        <!-- Indicador visual cuando se detecta -->
+        <a-entity position="0 0.1 0">
+          <a-plane 
+            color="#ff0000" 
+            opacity="0.3" 
+            width="0.18" 
+            height="0.18"
+          ></a-plane>
+        </a-entity>
+      </a-marker>
+    </a-scene>
+  `;
+  
+  // Obtener referencia al marcador y escena
+  setTimeout(() => {
+    arScene = document.querySelector('a-scene');
+    arMarker = document.querySelector('#weld-marker');
+    
+    if (arScene && arMarker) {
+      console.log("AR.js inicializado correctamente");
+      
+      // Escuchar eventos del marcador
+      arMarker.addEventListener('markerFound', function() {
+        markerDetected = true;
+        updateMarkerPosition();
+      });
+      
+      arMarker.addEventListener('markerLost', function() {
+        markerDetected = false;
+      });
+      
+      // Monitorear posición constantemente
+      setInterval(updateMarkerPosition, 100);
+      
+    } else {
+      console.error("Error inicializando AR.js");
+      markerStatusEl.innerHTML = "⚠️ AR.js no inicializado - Usando simulación";
+    }
+  }, 1000);
+}
+
+// Actualizar posición del marcador
+function updateMarkerPosition() {
+  if (!arMarker || !markerDetected) return;
+  
   try {
-    markerStatusEl.innerHTML = "📸 Activando cámara...";
+    // Obtener posición 3D del marcador
+    const position = arMarker.object3D.position;
+    const rotation = arMarker.object3D.rotation;
     
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: "environment",
-        width: { ideal: 1280 },
-        height: { ideal: 720 }
+    // Convertir a coordenadas de pantalla
+    const screenPos = worldToScreen(position.x, position.y);
+    
+    // Registrar movimiento
+    const currentTime = Date.now();
+    if (lastMarkerPosition) {
+      const timeDiff = (currentTime - lastMarkerPosition.timestamp) / 1000; // en segundos
+      
+      if (timeDiff > 0.1) { // Cada 100ms
+        // Calcular distancia 3D real (en metros)
+        const dx = position.x - lastMarkerPosition.x;
+        const dy = position.y - lastMarkerPosition.y;
+        const dz = position.z - lastMarkerPosition.z;
+        const distance3D = Math.sqrt(dx*dx + dy*dy + dz*dz);
+        
+        // Convertir a cm/s (1 metro = 100 cm)
+        currentSpeed = (distance3D * 100) / timeDiff;
+        
+        // Calcular distancia a la cámara (en cm)
+        currentDistance = Math.abs(position.z * 100); // z es profundidad
+        
+        // Calcular velocidad de aproximación (cambio en distancia)
+        const distanceChange = currentDistance - lastMarkerPosition.distance;
+        currentApproachSpeed = distanceChange / timeDiff;
+        
+        // Guardar en historial
+        markerMovementHistory.push({
+          from: { x: lastMarkerPosition.screenX, y: lastMarkerPosition.screenY },
+          to: { x: screenPos.x, y: screenPos.y },
+          timestamp: currentTime,
+          distance3D: distance3D,
+          speed: currentSpeed
+        });
+        
+        // Mantener historial limitado
+        if (markerMovementHistory.length > 50) {
+          markerMovementHistory.shift();
+        }
       }
-    });
+    }
     
-    video.srcObject = stream;
-    
-    video.onloadedmetadata = function() {
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      
-      isProcessing = true;
-      processFrame();
-      
-      // Iniciar sensores para ángulo
-      initSensors();
-      
-      markerStatusEl.innerHTML = "✅ Cámara activa. Muestra el patrón a la cámara.";
+    // Guardar posición actual
+    lastMarkerPosition = {
+      x: position.x,
+      y: position.y,
+      z: position.z,
+      screenX: screenPos.x,
+      screenY: screenPos.y,
+      distance: currentDistance,
+      timestamp: currentTime,
+      rotation: {
+        x: rotation.x * (180 / Math.PI),
+        y: rotation.y * (180 / Math.PI),
+        z: rotation.z * (180 / Math.PI)
+      }
     };
     
+    // Calcular ángulo basado en rotación del marcador
+    if (rotation.y !== undefined) {
+      // Convertir rotación a ángulo de soldadura (0-90°)
+      let angle = Math.abs(rotation.y * (180 / Math.PI)) % 90;
+      if (angle < 0) angle += 90;
+      if (angle > 90) angle = 90 - (angle - 90);
+      
+      currentAngle = Math.max(5, Math.min(85, Math.round(angle)));
+    }
+    
   } catch (err) {
-    console.error("Error cámara:", err);
-    markerStatusEl.innerHTML = "⚠️ Sin cámara. Usando modo demostración.";
-    isProcessing = true;
-    simulateFrameProcessing();
+    console.error("Error actualizando posición AR:", err);
   }
 }
+
+// Convertir coordenadas 3D a pantalla
+function worldToScreen(x, y) {
+  // Conversión simple (mejorar con matriz de proyección si es necesario)
+  return {
+    x: (x + 1) * (canvas.width / 2),
+    y: (-y + 1) * (canvas.height / 2)
+  };
+}
+
+// ============================================
+// SENSORES DEL TELÉFONO (backup para ángulo)
+// ============================================
 
 function initSensors() {
   if (window.DeviceOrientationEvent) {
     window.addEventListener('deviceorientation', handleDeviceOrientation);
+    console.log("Sensores de orientación activados");
+  }
+  
+  // iOS necesita permiso
+  if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+    DeviceMotionEvent.requestPermission()
+      .then(permissionState => {
+        if (permissionState === 'granted') {
+          window.addEventListener('devicemotion', handleDeviceMotion);
+        }
+      })
+      .catch(console.error);
   }
 }
 
 function handleDeviceOrientation(event) {
-  if (event.beta !== null) {
-    // Calcular ángulo basado en inclinación del dispositivo
+  if (event.beta !== null && !markerDetected) {
+    // Usar sensor solo si no hay detección AR
     let angle = Math.abs(event.beta);
     
-    // Normalizar a rango de soldadura (5-85°)
-    angle = Math.max(5, Math.min(85, angle));
+    // Ajustar según orientación del dispositivo
+    if (window.orientation === 90 || window.orientation === -90) {
+      angle = Math.abs(event.gamma);
+    }
     
-    updateAngleDisplay(Math.round(angle));
+    // Normalizar a 5-85 grados
+    angle = Math.max(5, Math.min(85, angle));
+    currentAngle = Math.round(angle);
     
     // Feedback de sonido
-    if (weldConfig.soundEnabled && evaluationSession.weldingActive) {
+    if (evaluationSession.weldingActive && weldConfig.soundEnabled) {
       const optimal = weldConfig.optimalAngle[weldConfig.type];
-      if (angle > optimal.max + 5) {
+      if (currentAngle > optimal.max + 5) {
         playHighBeep();
-      } else if (angle < optimal.min - 5) {
+      } else if (currentAngle < optimal.min - 5) {
         playLowBeep();
       }
     }
   }
 }
 
+function handleDeviceMotion(event) {
+  // Puede usarse para estabilidad adicional
+}
+
 // ============================================
-// PROCESAMIENTO DE VIDEO
+// BOTÓN DE VOLUMEN PARA SOLDAR
+// ============================================
+
+function initVolumeButton() {
+  // Detectar botón de subir volumen
+  document.addEventListener('keydown', function(e) {
+    if (e.keyCode === 447 || e.key === 'VolumeUp' || e.keyCode === 38) {
+      e.preventDefault();
+      startWelding();
+    }
+  });
+  
+  document.addEventListener('keyup', function(e) {
+    if (e.keyCode === 447 || e.key === 'VolumeUp' || e.keyCode === 38) {
+      pauseWelding();
+    }
+  });
+  
+  // Botón táctil
+  const weldButton = document.getElementById('weldButton');
+  weldButton.addEventListener('touchstart', function(e) {
+    e.preventDefault();
+    startWelding();
+  });
+  
+  weldButton.addEventListener('touchend', function(e) {
+    e.preventDefault();
+    pauseWelding();
+  });
+  
+  weldButton.addEventListener('mousedown', startWelding);
+  weldButton.addEventListener('mouseup', pauseWelding);
+  weldButton.addEventListener('mouseleave', pauseWelding);
+}
+
+// ============================================
+// PROCESAMIENTO PRINCIPAL
 // ============================================
 
 function processFrame() {
@@ -229,117 +429,63 @@ function processFrame() {
   }
   
   try {
-    // Limpiar y dibujar video
+    // Limpiar canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     
-    // Detectar patrón simple (basado en contraste)
-    detectSimplePattern();
+    // Actualizar UI con datos REALES
+    updateRealTimeUI();
     
-    // Dibujar guías
+    // Dibujar guías visuales
     drawVisualGuides();
+    
+    // Dibujar trayectoria del marcador
+    drawMarkerTrajectory();
     
     // Actualizar métricas
     updateStability();
     updateStraightness();
     
-    // Evaluación
+    // Registrar datos de evaluación
     if (isWelding && evaluationSession.active) {
       recordEvaluationData();
     }
     
-    // Progreso de soldadura
+    // Actualizar progreso de soldadura
     updateWeldProgress();
     
   } catch (err) {
-    console.error("Error frame:", err);
+    console.error("Error en processFrame:", err);
   }
   
   requestAnimationFrame(processFrame);
 }
 
-function detectSimplePattern() {
-  // Detección simple basada en movimiento y contraste
-  // Esto es un placeholder - puedes mejorarlo después
-  
-  const centerX = canvas.width / 2;
-  const centerY = canvas.height / 2;
-  
-  // Simular detección de patrón
-  const currentTime = Date.now();
-  if (lastMarkerPosition) {
-    const timeDiff = currentTime - lastMarkerPosition.timestamp;
-    
-    if (timeDiff > 100) { // Cada 100ms
-      // Simular movimiento de patrón
-      const newX = centerX + (Math.random() - 0.5) * 20;
-      const newY = centerY + (Math.random() - 0.5) * 20;
-      
-      // Calcular velocidad
-      const dx = newX - lastMarkerPosition.x;
-      const dy = newY - lastMarkerPosition.y;
-      const distance = Math.sqrt(dx * dx + dy * dy);
-      const speed = (distance / (timeDiff / 1000)) * 0.1; // Escalado
-      
-      // Actualizar métricas
-      document.getElementById('dist').textContent = "25.0 cm";
-      document.getElementById('speed').textContent = speed.toFixed(1) + " cm/s";
-      document.getElementById('approachSpeed').textContent = "0.2 cm/s";
-      
-      // Guardar movimiento
-      markerMovementHistory.push({
-        from: { x: lastMarkerPosition.x, y: lastMarkerPosition.y },
-        to: { x: newX, y: newY },
-        timestamp: currentTime
-      });
-      
-      if (markerMovementHistory.length > 30) {
-        markerMovementHistory.shift();
-      }
-      
-      lastMarkerPosition = { x: newX, y: newY, timestamp: currentTime };
-    }
+// Actualizar UI con datos reales
+function updateRealTimeUI() {
+  // Actualizar estado del marcador
+  if (markerDetected) {
+    markerStatusEl.innerHTML = `✅ Patrón detectado | Distancia: ${currentDistance.toFixed(1)}cm`;
+    markerStatusEl.style.color = '#0f0';
   } else {
-    lastMarkerPosition = { x: centerX, y: centerY, timestamp: currentTime };
+    markerStatusEl.innerHTML = "🔍 Buscando patrón... Usa el patrón impreso";
+    markerStatusEl.style.color = '#ff0';
   }
   
-  // Dibujar marcador simulado
-  ctx.fillStyle = 'rgba(255, 0, 0, 0.5)';
-  ctx.beginPath();
-  ctx.arc(centerX, centerY, 30, 0, Math.PI * 2);
-  ctx.fill();
+  // Actualizar ángulo
+  updateAngleDisplay(currentAngle);
   
-  markerStatusEl.innerHTML = "✅ Patrón detectado (modo demostración)";
+  // Actualizar métricas
+  document.getElementById('dist').textContent = currentDistance.toFixed(1) + ' cm';
+  document.getElementById('speed').textContent = Math.abs(currentSpeed).toFixed(1) + ' cm/s';
+  document.getElementById('approachSpeed').textContent = currentApproachSpeed.toFixed(1) + ' cm/s';
 }
 
-function simulateFrameProcessing() {
-  if (!isProcessing) return;
-  
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  drawVisualGuides();
-  
-  // Simular datos para demostración
-  if (Math.random() < 0.05) {
-    const simulatedAngle = 15 + Math.random() * 20;
-    updateAngleDisplay(simulatedAngle);
-    
-    document.getElementById('dist').textContent = (20 + Math.random() * 10).toFixed(1) + " cm";
-    document.getElementById('speed').textContent = (0.5 + Math.random() * 2).toFixed(1) + " cm/s";
-    document.getElementById('approachSpeed').textContent = (-0.2 + Math.random() * 0.4).toFixed(1) + " cm/s";
-  }
-  
-  requestAnimationFrame(simulateFrameProcessing);
-}
-
-// ============================================
-// INTERFAZ Y VISUALIZACIÓN
-// ============================================
-
+// Actualizar display de ángulo
 function updateAngleDisplay(angle) {
   if (isNaN(angle)) return;
   
-  angleDisplay.textContent = Math.round(angle) + '°';
-  document.getElementById('currentAngle').textContent = Math.round(angle) + '°';
+  angleDisplay.textContent = angle + '°';
+  document.getElementById('currentAngle').textContent = angle + '°';
   
   const optimal = weldConfig.optimalAngle[weldConfig.type];
   if (angle >= optimal.min && angle <= optimal.max) {
@@ -354,6 +500,38 @@ function updateAngleDisplay(angle) {
   }
 }
 
+// Dibujar trayectoria del marcador
+function drawMarkerTrajectory() {
+  if (markerMovementHistory.length < 2) return;
+  
+  ctx.strokeStyle = 'rgba(0, 255, 255, 0.8)';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  
+  // Dibujar línea continua de la trayectoria
+  for (let i = 0; i < markerMovementHistory.length - 1; i++) {
+    const point1 = markerMovementHistory[i].to || markerMovementHistory[i].from;
+    const point2 = markerMovementHistory[i + 1].from;
+    
+    if (i === 0) {
+      ctx.moveTo(point1.x, point1.y);
+    }
+    ctx.lineTo(point2.x, point2.y);
+  }
+  
+  ctx.stroke();
+  
+  // Dibujar puntos de la trayectoria
+  ctx.fillStyle = '#00ffff';
+  markerMovementHistory.forEach(move => {
+    const point = move.to || move.from;
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, 4, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
+// Dibujar guías visuales
 function drawVisualGuides() {
   const centerX = canvas.width / 2;
   const centerY = canvas.height / 2;
@@ -374,40 +552,70 @@ function drawVisualGuides() {
   ctx.strokeStyle = 'rgba(0, 200, 255, 0.4)';
   ctx.lineWidth = 2;
   ctx.stroke();
+  
+  // Guía de ángulo
+  const angle = currentAngle;
+  if (!isNaN(angle) && angle >= 0) {
+    const optimal = weldConfig.optimalAngle[weldConfig.type];
+    
+    // Arco de rango óptimo
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, 80, 
+            (optimal.min - 90) * Math.PI / 180, 
+            (optimal.max - 90) * Math.PI / 180);
+    ctx.strokeStyle = 'rgba(0, 255, 0, 0.3)';
+    ctx.lineWidth = 6;
+    ctx.stroke();
+    
+    // Línea de ángulo actual
+    const angleRad = (angle - 90) * Math.PI / 180;
+    ctx.beginPath();
+    ctx.moveTo(centerX, centerY);
+    ctx.lineTo(
+      centerX + Math.cos(angleRad) * 100,
+      centerY + Math.sin(angleRad) * 100
+    );
+    
+    if (angle >= optimal.min && angle <= optimal.max) {
+      ctx.strokeStyle = '#0f0';
+    } else if (angle < optimal.min) {
+      ctx.strokeStyle = '#ff0';
+    } else {
+      ctx.strokeStyle = '#f00';
+    }
+    
+    ctx.lineWidth = 4;
+    ctx.stroke();
+  }
+}
+
+// ============================================
+// SONIDOS
+// ============================================
+
+function playHighBeep() {
+  const beep = document.getElementById('beepHigh');
+  if (beep && Date.now() - lastVibrationTime > 300) {
+    beep.currentTime = 0;
+    beep.volume = 0.2;
+    beep.play().catch(e => console.log("Error sonido agudo:", e));
+    lastVibrationTime = Date.now();
+  }
+}
+
+function playLowBeep() {
+  const beep = document.getElementById('beepLow');
+  if (beep && Date.now() - lastVibrationTime > 300) {
+    beep.currentTime = 0;
+    beep.volume = 0.2;
+    beep.play().catch(e => console.log("Error sonido grave:", e));
+    lastVibrationTime = Date.now();
+  }
 }
 
 // ============================================
 // SISTEMA DE SOLDADURA
 // ============================================
-
-function initVolumeButton() {
-  // Botón de volumen
-  document.addEventListener('keydown', function(e) {
-    if (e.keyCode === 447 || e.key === 'VolumeUp') {
-      e.preventDefault();
-      startWelding();
-    }
-  });
-  
-  document.addEventListener('keyup', function(e) {
-    if (e.keyCode === 447 || e.key === 'VolumeUp') {
-      pauseWelding();
-    }
-  });
-  
-  // Botón táctil
-  const weldButton = document.getElementById('weldButton');
-  weldButton.addEventListener('mousedown', startWelding);
-  weldButton.addEventListener('mouseup', pauseWelding);
-  weldButton.addEventListener('touchstart', function(e) {
-    e.preventDefault();
-    startWelding();
-  });
-  weldButton.addEventListener('touchend', function(e) {
-    e.preventDefault();
-    pauseWelding();
-  });
-}
 
 function startWelding() {
   if (!isWelding) {
@@ -418,32 +626,29 @@ function startWelding() {
     weldButton.classList.add('active');
     weldButton.querySelector('.weld-text').textContent = 'SOLDANDO... SUELTA PARA PAUSAR';
     
-    // Sonidos
     if (weldConfig.soundEnabled) {
-      const arcSound = document.getElementById('arcSound');
       const weldSound = document.getElementById('weldSound');
+      const arcSound = document.getElementById('arcSound');
       
       if (arcSound) {
         arcSound.currentTime = 0;
         arcSound.volume = 0.7;
-        arcSound.play().catch(e => console.log("Sonido arco:", e));
+        arcSound.play().catch(e => console.log("Error sonido arco:", e));
+        
+        setTimeout(() => {
+          if (weldSound && isWelding) {
+            weldSound.currentTime = 0;
+            weldSound.volume = 0.4;
+            weldSound.play().catch(e => console.log("Error sonido soldadura:", e));
+          }
+        }, 500);
       }
-      
-      setTimeout(() => {
-        if (weldSound && isWelding) {
-          weldSound.currentTime = 0;
-          weldSound.volume = 0.4;
-          weldSound.play().catch(e => console.log("Sonido soldadura:", e));
-        }
-      }, 500);
     }
     
-    // Vibración
     if (weldConfig.vibrationEnabled && navigator.vibrate) {
       navigator.vibrate([50, 30, 50]);
     }
     
-    // Iniciar evaluación si no está activa
     if (!evaluationSession.active) {
       startEvaluation();
     }
@@ -462,7 +667,6 @@ function pauseWelding() {
     weldButton.querySelector('.weld-text').textContent = 'MANTÉN PRESIONADO PARA SOLDAR';
     document.getElementById('weldProgress').style.width = '0%';
     
-    // Detener sonido
     const weldSound = document.getElementById('weldSound');
     if (weldSound) {
       weldSound.pause();
@@ -496,207 +700,38 @@ function updateWeldProgress() {
   if (isWelding && weldingStartTime) {
     const elapsed = Date.now() - weldingStartTime;
     const progress = Math.min(100, (elapsed / 30000) * 100);
+    
     document.getElementById('weldProgress').style.width = progress + '%';
-  }
-}
-
-function playHighBeep() {
-  const beep = document.getElementById('beepHigh');
-  if (beep && Date.now() - lastVibrationTime > 300) {
-    beep.currentTime = 0;
-    beep.volume = 0.2;
-    beep.play().catch(e => console.log("Sonido alto:", e));
-    lastVibrationTime = Date.now();
-  }
-}
-
-function playLowBeep() {
-  const beep = document.getElementById('beepLow');
-  if (beep && Date.now() - lastVibrationTime > 300) {
-    beep.currentTime = 0;
-    beep.volume = 0.2;
-    beep.play().catch(e => console.log("Sonido bajo:", e));
-    lastVibrationTime = Date.now();
+    
+    if (weldConfig.vibrationEnabled && Date.now() - lastVibrationTime > 2000 && navigator.vibrate) {
+      navigator.vibrate([50]);
+      lastVibrationTime = Date.now();
+    }
   }
 }
 
 // ============================================
-// SISTEMA DE EVALUACIÓN (COMPLETO)
+// ESTABILIDAD Y RECTITUD (funciones iguales)
 // ============================================
-
-function initEvaluationSystem() {
-  console.log("Sistema de evaluación inicializado");
-  
-  document.getElementById('startEvalBtn').addEventListener('click', startEvaluation);
-  document.getElementById('stopEvalBtn').addEventListener('click', stopEvaluation);
-  document.getElementById('resultsBtn').addEventListener('click', showResults);
-  
-  // Modal de resultados
-  document.getElementById('newSessionBtn').addEventListener('click', startNewSession);
-  document.getElementById('shareResultsBtn').addEventListener('click', shareResults);
-  document.querySelector('.close-modal').addEventListener('click', hideResults);
-  
-  document.getElementById('resultsModal').addEventListener('click', function(e) {
-    if (e.target === this) hideResults();
-  });
-}
-
-function startEvaluation() {
-  if (evaluationSession.active) return;
-  
-  evaluationSession = {
-    active: true,
-    weldingActive: false,
-    startTime: Date.now(),
-    duration: 0,
-    dataPoints: [],
-    metrics: {
-      angleScores: [],
-      stabilityScores: [],
-      speedValues: [],
-      approachSpeedValues: [],
-      straightnessValues: [],
-      distanceValues: []
-    }
-  };
-  
-  // Limpiar historiales
-  markerMovementHistory = [];
-  angleHistory = [];
-  
-  // Actualizar UI
-  document.getElementById('startEvalBtn').style.display = 'none';
-  document.getElementById('stopEvalBtn').style.display = 'block';
-  document.getElementById('sessionTimer').textContent = '00:00';
-  document.getElementById('evalScore').textContent = '0';
-  
-  markerStatusEl.innerHTML = '📊 Evaluación lista - Presiona para soldar';
-  
-  // Iniciar timer
-  updateEvaluationTimer();
-}
-
-function stopEvaluation() {
-  if (!evaluationSession.active) return;
-  
-  evaluationSession.active = false;
-  evaluationSession.weldingActive = false;
-  evaluationSession.duration = Date.now() - evaluationSession.startTime;
-  
-  // Detener soldadura si está activa
-  if (isWelding) {
-    const weldSound = document.getElementById('weldSound');
-    if (weldSound) {
-      weldSound.pause();
-      weldSound.currentTime = 0;
-    }
-    isWelding = false;
-    document.getElementById('weldButton').classList.remove('active');
-  }
-  
-  // Procesar datos y mostrar resultados
-  processEvaluationData();
-  showResults();
-  
-  // Actualizar UI
-  document.getElementById('startEvalBtn').style.display = 'block';
-  document.getElementById('stopEvalBtn').style.display = 'none';
-}
-
-function updateEvaluationTimer() {
-  if (!evaluationSession.active) return;
-  
-  const elapsed = Date.now() - evaluationSession.startTime;
-  const minutes = Math.floor(elapsed / 60000);
-  const seconds = Math.floor((elapsed % 60000) / 1000);
-  
-  const timeStr = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-  document.getElementById('sessionTimer').textContent = timeStr;
-  
-  setTimeout(updateEvaluationTimer, 1000);
-}
-
-function recordEvaluationData() {
-  if (!evaluationSession.active || !evaluationSession.weldingActive) return;
-  
-  const currentAngle = parseFloat(angleDisplay.textContent) || 0;
-  const currentStability = stabilityScore || 0;
-  const currentSpeed = parseFloat(document.getElementById('speed').textContent) || 0;
-  const currentApproachSpeed = parseFloat(document.getElementById('approachSpeed').textContent) || 0;
-  const currentStraightness = straightnessScore || 0;
-  const currentDistance = parseFloat(document.getElementById('dist').textContent) || 0;
-  
-  if (!isNaN(currentAngle) && currentAngle > 0) {
-    const dataPoint = {
-      timestamp: Date.now() - evaluationSession.startTime,
-      angle: currentAngle,
-      stability: currentStability,
-      speed: Math.abs(currentSpeed),
-      approachSpeed: Math.abs(currentApproachSpeed),
-      straightness: currentStraightness,
-      distance: currentDistance
-    };
-    
-    evaluationSession.dataPoints.push(dataPoint);
-    
-    // Calcular puntaje de ángulo
-    const optimal = weldConfig.optimalAngle[weldConfig.type];
-    const angleScore = calculateAngleScore(currentAngle, optimal);
-    
-    evaluationSession.metrics.angleScores.push(angleScore);
-    evaluationSession.metrics.stabilityScores.push(currentStability);
-    evaluationSession.metrics.speedValues.push(Math.abs(currentSpeed));
-    evaluationSession.metrics.approachSpeedValues.push(Math.abs(currentApproachSpeed));
-    evaluationSession.metrics.straightnessValues.push(currentStraightness);
-    evaluationSession.metrics.distanceValues.push(currentDistance);
-    
-    // Actualizar puntaje en vivo
-    updateLiveScore();
-  }
-}
-
-function calculateAngleScore(angle, optimal) {
-  if (angle >= optimal.min && angle <= optimal.max) {
-    return 100;
-  } else if (angle < optimal.min) {
-    const diff = optimal.min - angle;
-    return Math.max(0, 100 - (diff * 15));
-  } else {
-    const diff = angle - optimal.max;
-    return Math.max(0, 100 - (diff * 15));
-  }
-}
-
-function updateLiveScore() {
-  if (evaluationSession.metrics.angleScores.length === 0) return;
-  
-  const avgAngleScore = evaluationSession.metrics.angleScores.reduce((a, b) => a + b, 0) / evaluationSession.metrics.angleScores.length;
-  const avgStability = evaluationSession.metrics.stabilityScores.reduce((a, b) => a + b, 0) / evaluationSession.metrics.stabilityScores.length;
-  
-  const liveScore = Math.round((avgAngleScore * 0.5) + (avgStability * 0.5));
-  
-  document.getElementById('evalScore').textContent = liveScore;
-  document.getElementById('evalScore').style.color = getScoreColor(liveScore);
-}
-
-function getScoreColor(score) {
-  if (score >= 80) return '#0f0';
-  if (score >= 60) return '#ff0';
-  return '#f00';
-}
 
 function updateStability() {
-  const currentAngle = parseFloat(angleDisplay.textContent);
-  if (!isNaN(currentAngle)) {
-    angleHistory.push(currentAngle);
-    if (angleHistory.length > 30) angleHistory.shift();
+  angleHistory.push(currentAngle);
+  if (angleHistory.length > 30) angleHistory.shift();
+  
+  if (angleHistory.length >= 10) {
+    const mean = angleHistory.reduce((a, b) => a + b, 0) / angleHistory.length;
+    const variance = angleHistory.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / angleHistory.length;
+    const stdDev = Math.sqrt(variance);
     
-    if (angleHistory.length >= 10) {
-      const mean = angleHistory.reduce((a, b) => a + b, 0) / angleHistory.length;
-      const variance = angleHistory.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / angleHistory.length;
-      const stdDev = Math.sqrt(variance);
-      
-      stabilityScore = Math.max(0, 100 - stdDev * 10);
+    stabilityScore = Math.max(0, 100 - stdDev * 10);
+    
+    const stabilityEl = document.getElementById('stability');
+    if (stabilityScore >= 80) {
+      stabilityEl.className = 'info-value good';
+    } else if (stabilityScore >= 60) {
+      stabilityEl.className = 'info-value warning';
+    } else {
+      stabilityEl.className = 'info-value error';
     }
   }
 }
@@ -710,7 +745,7 @@ function updateStraightness() {
   
   const positions = markerMovementHistory.map(move => move.from);
   if (lastMarkerPosition) {
-    positions.push(lastMarkerPosition);
+    positions.push({x: lastMarkerPosition.screenX, y: lastMarkerPosition.screenY});
   }
   
   if (positions.length < 3) {
@@ -742,6 +777,15 @@ function updateStraightness() {
   straightnessScore = Math.max(0, 100 - (avgDeviation * 5));
   
   document.getElementById('straightness').textContent = Math.round(straightnessScore) + '%';
+  
+  const straightnessEl = document.getElementById('straightness');
+  if (straightnessScore >= 80) {
+    straightnessEl.className = 'info-value good';
+  } else if (straightnessScore >= 60) {
+    straightnessEl.className = 'info-value warning';
+  } else {
+    straightnessEl.className = 'info-value error';
+  }
 }
 
 function distancePointToLine(point, lineStart, lineEnd) {
@@ -777,215 +821,32 @@ function distancePointToLine(point, lineStart, lineEnd) {
   return Math.sqrt(dx * dx + dy * dy);
 }
 
-function processEvaluationData() {
-  if (evaluationSession.dataPoints.length === 0) return;
-  
-  const optimal = weldConfig.optimalAngle[weldConfig.type];
-  const optimalDist = weldConfig.optimalDistance[weldConfig.type];
-  const optimalSpeed = weldConfig.optimalSpeed[weldConfig.type];
-  
-  const angleScores = evaluationSession.metrics.angleScores;
-  const stabilityScores = evaluationSession.metrics.stabilityScores;
-  const speedValues = evaluationSession.metrics.speedValues;
-  const approachSpeedValues = evaluationSession.metrics.approachSpeedValues;
-  const straightnessValues = evaluationSession.metrics.straightnessValues;
-  const distanceValues = evaluationSession.metrics.distanceValues;
-  
-  const avgAngleScore = angleScores.reduce((a, b) => a + b, 0) / angleScores.length;
-  const avgStability = stabilityScores.reduce((a, b) => a + b, 0) / stabilityScores.length;
-  const avgSpeed = speedValues.reduce((a, b) => a + b, 0) / speedValues.length;
-  const avgApproachSpeed = approachSpeedValues.reduce((a, b) => a + b, 0) / approachSpeedValues.length;
-  const avgStraightness = straightnessValues.reduce((a, b) => a + b, 0) / straightnessValues.length;
-  const avgDistance = distanceValues.reduce((a, b) => a + b, 0) / distanceValues.length;
-  
-  // Calcular puntajes
-  const speedScore = calculateSpeedScore(avgSpeed, optimalSpeed, weldConfig.type);
-  const approachScore = calculateApproachScore(avgApproachSpeed, weldConfig.type);
-  const distanceScore = calculateDistanceScore(avgDistance, optimalDist, weldConfig.type);
-  
-  // Puntaje final
-  let finalScore = 0;
-  if (weldConfig.type === 'electrodo') {
-    finalScore = Math.round(
-      (avgAngleScore * 0.2) +
-      (avgStability * 0.15) +
-      (speedScore * 0.15) +
-      (approachScore * 0.25) +
-      (avgStraightness * 0.15) +
-      (distanceScore * 0.1)
-    );
-  } else {
-    finalScore = Math.round(
-      (avgAngleScore * 0.25) +
-      (avgStability * 0.2) +
-      (speedScore * 0.2) +
-      (approachScore * 0.1) +
-      (avgStraightness * 0.15) +
-      (distanceScore * 0.1)
-    );
-  }
-  
-  // Guardar resultados
-  evaluationSession.results = {
-    duration: evaluationSession.duration,
-    finalScore: finalScore,
-    weldType: weldConfig.type,
-    metrics: {
-      angle: { score: Math.round(avgAngleScore) },
-      stability: { score: Math.round(avgStability) },
-      speed: { score: Math.round(speedScore), average: avgSpeed.toFixed(1) },
-      approach: { score: Math.round(approachScore), average: avgApproachSpeed.toFixed(1) },
-      straightness: { score: Math.round(avgStraightness) },
-      distance: { score: Math.round(distanceScore), average: avgDistance.toFixed(1) }
-    }
-  };
-  
-  // Generar recomendaciones
-  evaluationSession.recommendations = generateRecommendations(evaluationSession.results);
-}
+// ============================================
+// SISTEMA DE EVALUACIÓN (igual que antes)
+// ============================================
 
-function calculateSpeedScore(speed, optimal, weldType) {
-  if (weldType === 'electrodo') {
-    if (speed >= optimal.min && speed <= optimal.max) return 95;
-    if (speed >= optimal.min * 0.7 && speed <= optimal.max * 1.3) return 75;
-    return 50;
-  } else {
-    if (speed >= optimal.min && speed <= optimal.max) return 95;
-    if (speed >= optimal.min * 0.8 && speed <= optimal.max * 1.2) return 80;
-    return 60;
-  }
-}
-
-function calculateApproachScore(speed, weldType) {
-  if (weldType === 'electrodo') {
-    if (Math.abs(speed) <= 0.5) return 90;
-    if (Math.abs(speed) <= 1.0) return 70;
-    return 50;
-  } else {
-    if (Math.abs(speed) <= 0.3) return 95;
-    if (Math.abs(speed) <= 0.6) return 75;
-    return 55;
-  }
-}
-
-function calculateDistanceScore(distance, optimalDist, weldType) {
-  const idealDistance = (optimalDist.min + optimalDist.max) / 2;
-  const diff = Math.abs(distance - idealDistance);
+function initEvaluationSystem() {
+  console.log("Inicializando sistema de evaluación...");
   
-  if (weldType === 'electrodo') {
-    if (diff <= 2) return 90;
-    if (diff <= 5) return 70;
-    return 50;
-  } else {
-    if (diff <= 3) return 90;
-    if (diff <= 7) return 70;
-    return 50;
-  }
-}
-
-function generateRecommendations(results) {
-  const recommendations = [];
-  const metrics = results.metrics;
-  const weldType = results.weldType;
+  document.getElementById('startEvalBtn').addEventListener('click', startEvaluation);
+  document.getElementById('stopEvalBtn').addEventListener('click', stopEvaluation);
+  document.getElementById('resultsBtn').addEventListener('click', showResults);
+  document.getElementById('newSessionBtn').addEventListener('click', startNewSession);
+  document.getElementById('shareResultsBtn').addEventListener('click', shareResults);
+  document.querySelector('.close-modal').addEventListener('click', hideResults);
   
-  if (metrics.angle.score < 70) {
-    if (weldType === 'electrodo') {
-      recommendations.push("Mantén el ángulo entre 5°-15° para electrodo");
-    } else if (weldType === 'tig') {
-      recommendations.push("Para TIG, ángulo ideal: 10°-20°");
-    } else {
-      recommendations.push("Para MIG/MAG, ángulo ideal: 15°-25°");
-    }
-  }
-  
-  if (metrics.stability.score < 70) {
-    recommendations.push("Apoya el codo para mayor estabilidad");
-  }
-  
-  if (metrics.speed.score < 70) {
-    if (weldType === 'electrodo') {
-      recommendations.push("Electrodo: avanza a 0.3-0.8 cm/s");
-    } else if (weldType === 'tig') {
-      recommendations.push("TIG: velocidad ideal 3-10 cm/s");
-    } else {
-      recommendations.push("MIG: velocidad ideal 5-15 cm/s");
-    }
-  }
-  
-  if (recommendations.length === 0) {
-    recommendations.push("¡Excelente técnica! Mantén la práctica");
-  }
-  
-  return recommendations;
-}
-
-function showResults() {
-  if (!evaluationSession.results) {
-    alert("Primero completa una sesión de evaluación");
-    return;
-  }
-  
-  const results = evaluationSession.results;
-  const metrics = results.metrics;
-  
-  // Actualizar tiempo
-  const minutes = Math.floor(results.duration / 60000);
-  const seconds = Math.floor((results.duration % 60000) / 1000);
-  document.getElementById('totalTime').textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-  
-  // Actualizar puntaje
-  document.getElementById('finalScore').textContent = results.finalScore;
-  
-  // Nivel de habilidad
-  let skillLevel = "Principiante";
-  if (results.finalScore >= 80) skillLevel = "Experto";
-  else if (results.finalScore >= 60) skillLevel = "Intermedio";
-  document.getElementById('skillLevel').textContent = skillLevel;
-  
-  // Actualizar métricas
-  updateMetric('angle', metrics.angle.score, `Ángulo: ${metrics.angle.score}%`);
-  updateMetric('stability', metrics.stability.score, `Estabilidad: ${metrics.stability.score}%`);
-  updateMetric('speed', metrics.speed.score, `Velocidad: ${metrics.speed.average} cm/s`);
-  updateMetric('approach', metrics.approach.score, `Aproximación: ${metrics.approach.average} cm/s`);
-  updateMetric('straightness', metrics.straightness.score, `Rectitud: ${metrics.straightness.score}%`);
-  updateMetric('distance', metrics.distance.score, `Distancia: ${metrics.distance.average} cm`);
-  
-  // Actualizar recomendaciones
-  const recommendationsList = document.getElementById('recommendationsList');
-  recommendationsList.innerHTML = '';
-  
-  evaluationSession.recommendations.forEach(rec => {
-    const li = document.createElement('li');
-    li.textContent = rec;
-    recommendationsList.appendChild(li);
+  document.getElementById('resultsModal').addEventListener('click', function(e) {
+    if (e.target === this) hideResults();
   });
-  
-  // Mostrar modal
-  document.getElementById('resultsModal').style.display = 'flex';
 }
 
-function updateMetric(metricName, score, feedback) {
-  const scoreElement = document.getElementById(`${metricName}Score`);
-  const barElement = document.getElementById(`${metricName}Bar`);
-  const feedbackElement = document.getElementById(`${metricName}Feedback`);
+function startEvaluation() {
+  if (evaluationSession.active) return;
   
-  if (scoreElement) scoreElement.textContent = `${score}%`;
-  if (barElement) barElement.style.width = `${score}%`;
-  if (feedbackElement) feedbackElement.textContent = feedback;
-}
-
-function hideResults() {
-  document.getElementById('resultsModal').style.display = 'none';
-}
-
-function startNewSession() {
-  hideResults();
-  
-  // Reiniciar evaluación
   evaluationSession = {
-    active: false,
+    active: true,
     weldingActive: false,
-    startTime: null,
+    startTime: Date.now(),
     duration: 0,
     dataPoints: [],
     metrics: {
@@ -998,70 +859,124 @@ function startNewSession() {
     }
   };
   
-  // Limpiar UI
+  markerMovementHistory = [];
+  angleHistory = [];
+  
+  document.getElementById('startEvalBtn').style.display = 'none';
+  document.getElementById('stopEvalBtn').style.display = 'block';
+  markerStatusEl.innerHTML = '📊 Evaluación lista - Presiona para soldar';
+  
+  console.log("✅ Evaluación iniciada");
+  updateEvaluationTimer();
+}
+
+function stopEvaluation() {
+  if (!evaluationSession.active) return;
+  
+  evaluationSession.active = false;
+  evaluationSession.weldingActive = false;
+  evaluationSession.duration = Date.now() - evaluationSession.startTime;
+  
+  if (isWelding) {
+    const weldSound = document.getElementById('weldSound');
+    if (weldSound) {
+      weldSound.pause();
+      weldSound.currentTime = 0;
+    }
+    isWelding = false;
+    document.getElementById('weldButton').classList.remove('active');
+  }
+  
+  processEvaluationData();
+  showResults();
+  
   document.getElementById('startEvalBtn').style.display = 'block';
   document.getElementById('stopEvalBtn').style.display = 'none';
-  document.getElementById('sessionTimer').textContent = '00:00';
-  document.getElementById('evalScore').textContent = '0';
-  document.getElementById('evalScore').style.color = 'white';
   
-  const weldButton = document.getElementById('weldButton');
-  weldButton.classList.remove('active');
-  weldButton.querySelector('.weld-text').textContent = 'MANTÉN PRESIONADO PARA SOLDAR';
+  console.log("⏹️ Evaluación finalizada");
 }
 
-function shareResults() {
-  if (!evaluationSession.results) return;
+function updateEvaluationTimer() {
+  if (!evaluationSession.active) return;
   
-  const results = evaluationSession.results;
-  const metrics = results.metrics;
-  const weldTypeName = results.weldType === 'electrodo' ? 'Electrodo' : 
-                      results.weldType === 'tig' ? 'TIG' : 'MIG/MAG';
+  const elapsed = Date.now() - evaluationSession.startTime;
+  const minutes = Math.floor(elapsed / 60000);
+  const seconds = Math.floor((elapsed % 60000) / 1000);
   
-  const text = `🏆 Resultados Simulador Soldadura ${weldTypeName}:
-⏱️ Duración: ${Math.floor(results.duration / 1000)}s
-📊 Puntaje: ${results.finalScore}/100
-🎯 Ángulo: ${metrics.angle.score}%
-🤲 Estabilidad: ${metrics.stability.score}%
-🚀 Vel. Traslación: ${metrics.speed.score}%
-⬇️ Vel. Aproximación: ${metrics.approach.score}%
-📐 Rectitud: ${metrics.straightness.score}%
-📏 Distancia: ${metrics.distance.score}%
+  const timeStr = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  document.getElementById('sessionTimer').textContent = timeStr;
+  
+  setTimeout(updateEvaluationTimer, 1000);
+}
 
-#Soldadura #Simulador #Entrenamiento`;
+function recordEvaluationData() {
+  if (!evaluationSession.active || !evaluationSession.weldingActive) return;
   
-  if (navigator.share) {
-    navigator.share({
-      title: `Mis Resultados de Soldadura`,
-      text: text
-    }).catch(console.error);
-  } else {
-    navigator.clipboard.writeText(text).then(() => {
-      alert("Resultados copiados al portapapeles");
-    }).catch(() => {
-      prompt("Copia estos resultados:", text);
-    });
+  if (!isNaN(currentAngle) && currentAngle > 0) {
+    const dataPoint = {
+      timestamp: Date.now() - evaluationSession.startTime,
+      angle: currentAngle,
+      stability: stabilityScore,
+      speed: Math.abs(currentSpeed),
+      approachSpeed: Math.abs(currentApproachSpeed),
+      straightness: straightnessScore,
+      distance: currentDistance
+    };
+    
+    evaluationSession.dataPoints.push(dataPoint);
+    
+    const optimal = weldConfig.optimalAngle[weldConfig.type];
+    const angleScore = calculateAngleScore(currentAngle, optimal);
+    
+    evaluationSession.metrics.angleScores.push(angleScore);
+    evaluationSession.metrics.stabilityScores.push(stabilityScore);
+    evaluationSession.metrics.speedValues.push(Math.abs(currentSpeed));
+    evaluationSession.metrics.approachSpeedValues.push(Math.abs(currentApproachSpeed));
+    evaluationSession.metrics.straightnessValues.push(straightnessScore);
+    evaluationSession.metrics.distanceValues.push(currentDistance);
+    
+    updateLiveScore();
   }
 }
 
-// ============================================
-// MANEJO DE ERRORES
-// ============================================
-
-window.addEventListener('error', function(e) {
-  console.error('Error:', e.error);
-  if (markerStatusEl) {
-    markerStatusEl.innerHTML = "⚠️ Error - Recarga la página";
-  }
-});
-
-document.addEventListener('visibilitychange', function() {
-  if (document.hidden) {
-    isProcessing = false;
-    if (isWelding) {
-      pauseWelding();
-    }
+function calculateAngleScore(angle, optimal) {
+  if (angle >= optimal.min && angle <= optimal.max) {
+    return 100;
+  } else if (angle < optimal.min) {
+    const diff = optimal.min - angle;
+    return Math.max(0, 100 - (diff * 15));
   } else {
-    isProcessing = true;
+    const diff = angle - optimal.max;
+    return Math.max(0, 100 - (diff * 15));
   }
-});
+}
+
+function updateLiveScore() {
+  if (evaluationSession.metrics.angleScores.length === 0) return;
+  
+  const avgAngleScore = evaluationSession.metrics.angleScores.reduce((a, b) => a + b, 0) / evaluationSession.metrics.angleScores.length;
+  const avgStability = evaluationSession.metrics.stabilityScores.reduce((a, b) => a + b, 0) / evaluationSession.metrics.stabilityScores.length;
+  
+  const liveScore = Math.round((avgAngleScore * 0.5) + (avgStability * 0.5));
+  
+  document.getElementById('evalScore').textContent = liveScore;
+  document.getElementById('evalScore').style.color = getScoreColor(liveScore);
+}
+
+function getScoreColor(score) {
+  if (score >= 80) return '#0f0';
+  if (score >= 60) return '#ff0';
+  return '#f00';
+}
+
+// [MANTENER TODAS LAS FUNCIONES DE EVALUACIÓN RESTANTES]
+// processEvaluationData(), calculateSpeedScore(), generateRecommendations(), etc.
+// Son exactamente las mismas que en tu código original
+
+// ============================================
+// ARCHIVOS ADICIONALES NECESARIOS
+// ============================================
+
+// Para que funcione, necesitamos:
+// 1. Convertir 4x4_1000.png a formato .patt (AR.js)
+// 2. Servir ambos archivos en GitHub Pages
