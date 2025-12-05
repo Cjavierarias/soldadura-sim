@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Simulador de Soldadura AR</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="loading">
+    <div class="spinner"></div>
+    <p>Cargando OpenCV.js...</p>
+    <p id="loadStatus"></p>
+  </div>
+  
+  <button id="startBtn" class="start-button">
+    🔥 INICIAR SIMULADOR DE SOLDADURA
+  </button>
+  
+  <div id="app" style="display:none;">
+    <video id="camera" autoplay playsinline></video>
+    <canvas id="overlay"></canvas>
+    
+    <!-- Panel de controles MINIMIZABLE -->
+    <div id="controlsPanel" class="minimizable-panel">
+      <div class="panel-header" id="controlsHeader">
+        <h3>⚙️ Configuración</h3>
+        <button class="minimize-btn" id="minimizeControls">−</button>
+      </div>
+      <div class="panel-content" id="controlsContent">
+        <div class="control-group">
+          <div class="control-title">Tipo de Soldadura</div>
+          <select id="weldType">
+            <option value="mig">MIG/MAG</option>
+            <option value="tig">TIG</option>
+            <option value="electrodo">Electrodo</option>
+          </select>
+        </div>
+        
+        <div class="control-group">
+          <div class="control-title">Material Base</div>
+          <select id="material">
+            <option value="acero">Acero al carbono</option>
+            <option value="inox">Acero inoxidable</option>
+            <option value="aluminio">Aluminio</option>
+          </select>
+        </div>
+        
+        <div class="control-group">
+          <div class="control-title">Sonidos</div>
+          <button id="soundToggle" class="active">🔊 Sonidos ON</button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Panel de evaluación MINIMIZABLE -->
+    <div id="evaluationPanel" class="minimizable-panel">
+      <div class="panel-header" id="evalHeader">
+        <h3>📊 Evaluación</h3>
+        <button class="minimize-btn" id="minimizeEval">−</button>
+      </div>
+      <div class="panel-content" id="evalContent">
+        <div class="evaluation-stats">
+          <div class="timer-display">
+            <div class="timer-label">Tiempo:</div>
+            <div class="timer-value" id="sessionTimer">00:00</div>
+          </div>
+          <div class="score-display">
+            <div class="score-label">Puntaje:</div>
+            <div class="score-value" id="evalScore">0</div>
+          </div>
+        </div>
+        <div class="evaluation-controls">
+          <button id="startEvalBtn" class="eval-btn start">▶️ Iniciar</button>
+          <button id="stopEvalBtn" class="eval-btn stop" style="display:none;">⏹️ Detener</button>
+          <button id="resultsBtn" class="eval-btn results">📋 Resultados</button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Indicador de ángulo -->
+    <div id="angleIndicator">
+      <div class="angle-value" id="angleDisplay">--°</div>
+      <div class="angle-label">Ángulo</div>
+    </div>
+    
+    <!-- Panel de información -->
+    <div id="info">
+      <div class="info-row">
+        <div class="info-item">
+          <div class="info-label">Distancia</div>
+          <div class="info-value" id="dist">-- cm</div>
+        </div>
+        <div class="info-item">
+          <div class="info-label">Ángulo</div>
+          <div class="info-value" id="currentAngle">--°</div>
+        </div>
+      </div>
+      <div class="info-row">
+        <div class="info-item">
+          <div class="info-label">Vel. Traslación</div>
+          <div class="info-value" id="speed">-- cm/s</div>
+        </div>
+        <div class="info-item">
+          <div class="info-label">Vel. Aproximación</div>
+          <div class="info-value" id="approachSpeed">-- cm/s</div>
+        </div>
+      </div>
+      <div class="info-row">
+        <div class="info-item full-width">
+          <div class="info-label">Rectitud</div>
+          <div class="info-value" id="straightness">--%</div>
+        </div>
+      </div>
+      <div class="info-status" id="markerStatus">
+        🔍 Buscando marcador de soldadura...
+      </div>
+    </div>
+    
+    <!-- BOTÓN DE SOLDADURA (VOLUMEN) -->
+    <div id="weldButtonContainer">
+      <button id="weldButton" class="weld-button">
+        <span class="weld-icon">🔊</span>
+        <span class="weld-text">MANTÉN PRESIONADO PARA SOLDAR</span>
+        <div class="weld-progress" id="weldProgress"></div>
+      </button>
+      <div class="weld-instruction">
+        ⚠️ Suelta para pausar / Toca para continuar
+      </div>
+    </div>
+    
+    <!-- Modal de confirmación de pausa -->
+    <div id="pauseModal" class="pause-modal">
+      <div class="pause-content">
+        <h3>⚠️ Soldadura Pausada</h3>
+        <p>¿Deseas continuar soldando o finalizar la evaluación?</p>
+        <div class="pause-actions">
+          <button id="continueWeldBtn" class="pause-btn continue">▶️ Continuar Soldando</button>
+          <button id="endWeldBtn" class="pause-btn end">⏹️ Finalizar Evaluación</button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Modal de resultados -->
+    <div id="resultsModal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>📊 Resultados de Evaluación</h2>
+          <span class="close-modal">&times;</span>
+        </div>
+        <div class="modal-body">
+          <div class="results-summary">
+            <h3>Resumen de Sesión</h3>
+            <div class="summary-grid">
+              <div class="summary-item">
+                <span class="summary-label">Duración:</span>
+                <span class="summary-value" id="totalTime">0:00</span>
+              </div>
+              <div class="summary-item">
+                <span class="summary-label">Puntaje Final:</span>
+                <span class="summary-value" id="finalScore">0</span>
+              </div>
+              <div class="summary-item">
+                <span class="summary-label">Nivel:</span>
+                <span class="summary-value" id="skillLevel">Principiante</span>
+              </div>
+            </div>
+          </div>
+          
+          <div class="results-details">
+            <h3>Métricas Detalladas</h3>
+            <div class="metric">
+              <div class="metric-header">
+                <span>Ángulo Óptimo</span>
+                <span id="angleScore">0%</span>
+              </div>
+              <div class="metric-bar">
+                <div class="metric-fill" id="angleBar"></div>
+              </div>
+              <div class="metric-desc" id="angleFeedback"></div>
+            </div>
+            
+            <div class="metric">
+              <div class="metric-header">
+                <span>Estabilidad</span>
+                <span id="stabilityScore">0%</span>
+              </div>
+              <div class="metric-bar">
+                <div class="metric-fill" id="stabilityBar"></div>
+              </div>
+              <div class="metric-desc" id="stabilityFeedback"></div>
+            </div>
+            
+            <div class="metric">
+              <div class="metric-header">
+                <span>Vel. Traslación</span>
+                <span id="speedScore">0%</span>
+              </div>
+              <div class="metric-bar">
+                <div class="metric-fill" id="speedBar"></div>
+              </div>
+              <div class="metric-desc" id="speedFeedback"></div>
+            </div>
+            
+            <div class="metric">
+              <div class="metric-header">
+                <span>Vel. Aproximación</span>
+                <span id="approachScore">0%</span>
+              </div>
+              <div class="metric-bar">
+                <div class="metric-fill" id="approachBar"></div>
+              </div>
+              <div class="metric-desc" id="approachFeedback"></div>
+            </div>
+            
+            <div class="metric">
+              <div class="metric-header">
+                <span>Rectitud</span>
+                <span id="straightnessScore">0%</span>
+              </div>
+              <div class="metric-bar">
+                <div class="metric-fill" id="straightnessBar"></div>
+              </div>
+              <div class="metric-desc" id="straightnessFeedback"></div>
+            </div>
+            
+            <div class="metric">
+              <div class="metric-header">
+                <span>Distancia Constante</span>
+                <span id="distanceScore">0%</span>
+              </div>
+              <div class="metric-bar">
+                <div class="metric-fill" id="distanceBar"></div>
+              </div>
+              <div class="metric-desc" id="distanceFeedback"></div>
+            </div>
+          </div>
+          
+          <div class="results-recommendations">
+            <h3>🔧 Recomendaciones para Mejorar</h3>
+            <ul id="recommendationsList">
+              <!-- Las recomendaciones se agregarán dinámicamente -->
+            </ul>
+          </div>
+          
+          <div class="results-actions">
+            <button id="newSessionBtn" class="action-btn primary">🔄 Nueva Sesión</button>
+            <button id="shareResultsBtn" class="action-btn secondary">📤 Compartir</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Elementos de audio -->
+    <audio id="beepHigh" preload="auto">
+      <source src="https://assets.mixkit.co/sfx/preview/mixkit-warning-alarm-buzzer-1551.mp3" type="audio/mpeg">
+    </audio>
+    <audio id="beepLow" preload="auto">
+      <source src="https://assets.mixkit.co/sfx/preview/mixkit-retro-game-emergency-alarm-1000.mp3" type="audio/mpeg">
+    </audio>
+    <audio id="goodSound" preload="auto">
+      <source src="https://assets.mixkit.co/sfx/preview/mixkit-correct-answer-tone-2870.mp3" type="audio/mpeg">
+    </audio>
+    <audio id="weldSound" preload="auto" loop>
+      <source src="https://assets.mixkit.co/sfx/preview/mixkit-welder-arc-welding-1184.mp3" type="audio/mpeg">
+    </audio>
+    <audio id="arcSound" preload="auto">
+      <source src="https://assets.mixkit.co/sfx/preview/mixkit-electric-arc-1101.mp3" type="audio/mpeg">
+    </audio>
+  </div>
+
+  <!-- OpenCV.js -->
+  <script async src="https://docs.opencv.org/3.4.0/opencv.js" onload="onOpenCvReady()"></script>
+  <script src="app.js"></script>
+</body>
+</html>
